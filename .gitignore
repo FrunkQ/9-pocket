@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# Raw checklist pages are re-downloadable and one of them is over 100 MB.
+data/raw/
+.wrangler/
+*.local
+.DS_Store

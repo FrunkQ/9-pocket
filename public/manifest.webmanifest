@@ -1,0 +1,11 @@
+{
+  "name": "Nine Pocket",
+  "short_name": "Nine Pocket",
+  "description": "Scan your cards, fill the binder.",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1F3F2",
+  "theme_color": "#15181B",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

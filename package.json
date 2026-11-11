@@ -1,0 +1,27 @@
+{
+  "name": "nine-pocket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scan your cards, fill the binder. A free set-completion tracker for trading cards.",
+  "scripts": {
+    "dev": "vite",
+    "dev:phone": "vite --host --mode phone",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "data": "node scripts/build-checklists.mjs"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
