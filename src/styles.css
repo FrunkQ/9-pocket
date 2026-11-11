@@ -1283,3 +1283,76 @@ input[type='text'] {
   object-fit: cover;
   border-radius: 2px;
 }
+
+/* ---- Quick add, and multi-card scanning --------------------------------- */
+
+.quick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+.quick-cell {
+  position: relative;
+  min-height: 60px;
+  padding: 6px 4px;
+  background: none;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--ink);
+  min-width: 0;
+  touch-action: manipulation;
+}
+.quick-cell.is-on {
+  background: var(--ink);
+  color: #fff;
+}
+.quick-no {
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 24px;
+  line-height: 0.9;
+}
+.quick-who {
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quick-count {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.guide-cells {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+.guide-cells b {
+  border: 1px dashed rgba(255, 75, 58, 0.85);
+}
+.batch {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.batch-row {
+  align-items: center;
+  gap: 10px;
+}
+.batch-row select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 14px;
+}

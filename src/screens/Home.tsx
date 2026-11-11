@@ -3,6 +3,7 @@ import { baseSections, cardKey, categoryOf, getProduct, useCatalogVersion } from
 import { BottomBar, Screen } from '../components/Chrome';
 import { EBAY_SITES } from '../lib/ebay';
 import { copyValue, moneyTotal } from '../lib/estimate';
+import { promptInstall, useInstall } from '../lib/install';
 import { photoCount, usePhotoVersion } from '../lib/photos';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
@@ -113,6 +114,39 @@ function Backup() {
   );
 }
 
+/** Offers to put the app on the home screen, where the browser allows it. */
+function Install() {
+  const install = useInstall();
+  const state = useCollection();
+  if (install.installed || (!install.canPrompt && !install.ios)) return null;
+  return (
+    <section className="panel" aria-labelledby="install-title">
+      <h2 id="install-title" className="eyebrow">
+        INSTALL THE APP
+      </h2>
+      {install.canPrompt ? (
+        <>
+          <p className="panel-text">Put Nine Pocket on your home screen. It opens full-screen and works without a connection.</p>
+          <div className="row-buttons">
+            <button type="button" className="btn btn-ink" onClick={() => void promptInstall()}>
+              Install
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="panel-text">
+            In Safari, tap the Share button, then <strong>Add to Home Screen</strong>. It opens full-screen and works without a connection.
+          </p>
+          {state.copies.length > 0 ? (
+            <p className="panel-text">The installed app keeps its own storage. To bring your {state.copies.length} cards across, download a backup here first, then use "Replace with backup" inside the installed app.</p>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function Home() {
   const state = useCollection();
   const friends = useFriends();
@@ -193,6 +227,8 @@ export function Home() {
           <span>{mine.length === 0 ? `No ${label} sets yet. Pick one from the list, or scan a card and the app will find its set.` : `Browse every ${label} set`}</span>
         </a>
       </div>
+
+      <Install />
 
       <section className="panel" aria-labelledby="friends-title">
         <h2 id="friends-title" className="eyebrow">

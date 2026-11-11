@@ -16,6 +16,19 @@ import { CATEGORIES, type Category } from '../types';
 type Camera = 'starting' | 'live' | 'blocked' | 'off';
 
 const ZOOMS = [1, 1.5, 2, 3];
+/** Cards per shot: one, or a square layout of 4, 9 or 16. */
+const GRIDS = [1, 2, 3, 4];
+/** Below this many pixels across a card, names stop reading reliably. */
+const MIN_CARD_PX = 320;
+
+/** One card from a multi-card shot, with what it was matched to. */
+interface BatchItem {
+  canvas: HTMLCanvasElement;
+  thumb: string;
+  candidates: Candidate[];
+  /** Index into candidates, or -1 to leave this card out. */
+  choice: number;
+}
 /** Spare border captured around the guide so the card's edges are in the picture. */
 const MARGIN = 0.08;
 
@@ -54,7 +67,11 @@ export function Scan({ route }: { route: Route }) {
 
   const [camera, setCamera] = useState<Camera>(typeMode ? 'off' : 'starting');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(1);
+  const [grid, setGrid] = useState(1);
+  const [batch, setBatch] = useState<BatchItem[] | null>(null);
+  const [cardPx, setCardPx] = useState(0);
+  const [progress, setProgress] = useState('');
   const [busy, setBusy] = useState(false);
   const [pass, setPass] = useState(0);
   const [shot, setShot] = useState<string | null>(null);
@@ -156,20 +173,97 @@ export function Scan({ route }: { route: Route }) {
     }
   };
 
+  /**
+   * Reads a shot of n-by-n cards laid out edge to edge. `margin` is the
+   * spare border around the layout, as a share of the picture's size.
+   */
+  const readGrid = async (source: HTMLCanvasElement, n: number, margin: number) => {
+    setBusy(true);
+    setProblem('');
+    setFound(null);
+    setOthers(null);
+    setAdded('');
+    setBatch(null);
+    setShot(source.toDataURL('image/jpeg', 0.7));
+    setFlattened(false);
+    const left = source.width * margin;
+    const top = source.height * margin;
+    const cellW = (source.width - left * 2) / n;
+    const cellH = (source.height - top * 2) / n;
+    setCardPx(Math.round(cellW));
+    const SPARE = 0.05; // A little of the neighbours, so each card's own edges are in its piece.
+    const items: BatchItem[] = [];
+    try {
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+          setProgress(`Reading card ${r * n + c + 1} of ${n * n}…`);
+          const x = Math.max(0, left + (c - SPARE) * cellW);
+          const y = Math.max(0, top + (r - SPARE) * cellH);
+          const w = Math.min(source.width - x, cellW * (1 + SPARE * 2));
+          const h = Math.min(source.height - y, cellH * (1 + SPARE * 2));
+          const piece = document.createElement('canvas');
+          piece.width = Math.round(w);
+          piece.height = Math.round(h);
+          piece.getContext('2d')!.drawImage(source, x, y, w, h, 0, 0, piece.width, piece.height);
+          const flat = straighten(piece, 800, SPARE / (1 + SPARE * 2));
+          let best: Candidate[] = [];
+          await readCard(flat.canvas, (text) => {
+            best = matchText(text, { preferProduct: prefer });
+            return isConfident(best);
+          });
+          const small = document.createElement('canvas');
+          small.width = 150;
+          small.height = 210;
+          small.getContext('2d')!.drawImage(flat.canvas, 0, 0, 150, 210);
+          items.push({ canvas: flat.canvas, thumb: small.toDataURL('image/jpeg', 0.6), candidates: best.slice(0, 5), choice: best.length && best[0].name >= 0.75 ? 0 : -1 });
+        }
+      }
+      setBatch(items);
+    } catch {
+      setProblem('The text reader could not load. Check your connection.');
+    } finally {
+      setBusy(false);
+      setProgress('');
+    }
+  };
+
   const capture = () => {
     const video = videoRef.current;
     const view = viewRef.current;
     const guide = guideRef.current;
     if (!video || !view || !guide || video.videoWidth === 0) return;
-    const rect = guideCrop(view.getBoundingClientRect(), guide.getBoundingClientRect(), video.videoWidth, video.videoHeight, zoom, MARGIN);
-    void read(cropFrame(video, rect), MARGIN / (1 + MARGIN * 2));
+    const rect = guideCrop(view.getBoundingClientRect(), guide.getBoundingClientRect(), video.videoWidth, video.videoHeight, zoom, grid > 1 ? 0.02 : MARGIN);
+    if (grid > 1) void readGrid(cropFrame(video, rect), grid, 0.02 / 1.04);
+    else void read(cropFrame(video, rect), MARGIN / (1 + MARGIN * 2));
+  };
+
+  const setChoice = (index: number, choice: number) => setBatch((items) => items && items.map((item, i) => (i === index ? { ...item, choice } : item)));
+
+  /** Adds every card in the shot that has a match selected. */
+  const confirmBatch = () => {
+    if (!batch) return;
+    let count = 0;
+    for (const item of batch) {
+      const c = item.candidates[item.choice];
+      if (!c) continue;
+      const version = c.card.po ? versionsFor(c.product, c.section, c.card)[0]?.id ?? 'base' : 'base';
+      const copy = addCopy({ product: c.product.id, section: c.section.id, n: c.card.n, version });
+      addBinder(c.product.id);
+      void savePhoto(copy.id, cardKey(c.product.id, c.section.id, c.card.n), item.canvas);
+      count++;
+    }
+    setSession((n) => n + count);
+    reset();
+    setAdded(`Added ${count} ${count === 1 ? 'card' : 'cards'} from that shot.`);
   };
 
   const onPhoto = async (file: File | undefined) => {
     if (!file) return;
     try {
       const bitmap = await createImageBitmap(file);
-      await read(toCanvas(bitmap, 2000), 0);
+      // A photo from the phone's own camera app has far more detail than a video frame.
+      if (grid > 1) await readGrid(toCanvas(bitmap, 4200), grid, 0);
+      else await read(toCanvas(bitmap, 2000), 0);
     } catch {
       setProblem('That photo could not be opened.');
     }
@@ -226,6 +320,7 @@ export function Scan({ route }: { route: Route }) {
     setPicked(null);
     setFound(null);
     setOthers(null);
+    setBatch(null);
     setShot(null);
     setProblem('');
     setQuery('');
@@ -282,9 +377,16 @@ export function Scan({ route }: { route: Route }) {
               <i />
               <i />
               <i />
+              {grid > 1 ? (
+                <div className="guide-cells" style={{ gridTemplateColumns: `repeat(${grid}, 1fr)`, gridTemplateRows: `repeat(${grid}, 1fr)` }}>
+                  {Array.from({ length: grid * grid }, (_, i) => (
+                    <b key={i} />
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {camera === 'blocked' ? (
+          {camera === 'blocked' && !shot ? (
             <div className="viewfinder-note">
               <p>The camera is not available here. It needs permission and a secure (https) page.</p>
               <p>You can still use a photo or type the name.</p>
@@ -293,10 +395,11 @@ export function Scan({ route }: { route: Route }) {
           {camera === 'starting' ? <div className="viewfinder-note">Starting camera…</div> : null}
           {busy ? (
             <div className="viewfinder-busy">
-              Reading the card… {pass}/{PASS_COUNT}
+              {progress || `Reading the card… ${pass}/${PASS_COUNT}`}
             </div>
           ) : null}
-          {shot && !busy ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
+          {shot && !busy && !batch ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
+          {shot && !busy && batch ? <div className="viewfinder-tag">About {cardPx} pixels across each card</div> : null}
         </div>
       )}
 
@@ -366,6 +469,17 @@ export function Scan({ route }: { route: Route }) {
                     <input type="file" accept="image/*" capture="environment" onChange={(e) => void onPhoto(e.target.files?.[0])} />
                   </label>
                 </div>
+                {!shot ? (
+                  <div className="scan-tools">
+                    <div className="zooms" role="group" aria-label="Cards per shot">
+                      {GRIDS.map((g) => (
+                        <button key={g} type="button" className={grid === g ? 'is-on' : ''} aria-pressed={grid === g} onClick={() => setGrid(g)}>
+                          {g === 1 ? '1 card' : `${g}×${g}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {camera === 'live' && !shot ? (
                   <div className="scan-tools">
                     <div className="zooms" role="group" aria-label="Zoom">
@@ -387,9 +501,45 @@ export function Scan({ route }: { route: Route }) {
                     ) : null}
                   </div>
                 ) : null}
-                {camera === 'live' && !shot ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus. Fancy lettering on the front? The back usually reads better.</p> : null}
+                {!shot && grid > 1 ? (
+                  <p className="mono-note">
+                    Lay {grid * grid} cards edge to edge in a {grid}×{grid} block and fill the frame with them. The more cards per shot, the fewer pixels each one gets: if names stop reading, use fewer cards, or "Use a photo", which captures far more detail than live video.
+                  </p>
+                ) : null}
+                {camera === 'live' && !shot && grid === 1 ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus. Fancy lettering on the front? The back usually reads better.</p> : null}
               </>
             )}
+
+            {batch ? (
+              <div className="batch">
+                <div className="eyebrow">
+                  {batch.filter((b) => b.choice >= 0).length} OF {batch.length} CARDS MATCHED
+                </div>
+                {cardPx < MIN_CARD_PX ? <p className="panel-note">Each card was only about {cardPx} pixels across, which is too small to read reliably. Try fewer cards per shot, or "Use a photo".</p> : null}
+                <ul className="rows">
+                  {batch.map((item, i) => (
+                    <li key={i} className="row batch-row">
+                      <span className="row-thumb">
+                        <img src={item.thumb} alt={`Card ${i + 1}`} />
+                      </span>
+                      <select aria-label={`Card ${i + 1}`} value={item.choice} onChange={(e) => setChoice(i, Number(e.target.value))}>
+                        {item.candidates.map((c, j) => (
+                          <option key={j} value={j}>
+                            {c.card.p} #{c.card.n} · {where(c)}
+                          </option>
+                        ))}
+                        <option value={-1}>{item.candidates.length ? 'Leave this one out' : 'Not recognised'}</option>
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row-buttons">
+                  <button type="button" className="btn btn-red btn-big" onClick={confirmBatch} disabled={!batch.some((b) => b.choice >= 0)}>
+                    ADD {batch.filter((b) => b.choice >= 0).length} CARDS
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <label className="field">
               <span className="field-label">{typeMode ? 'Player or card name, or card number' : 'Or type the name or number'}</span>

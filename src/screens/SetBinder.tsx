@@ -120,6 +120,12 @@ export function SetBinder({ route }: { route: Route }) {
         {section.name}: {sectionOwned} of {section.cards.length} in. Values marked ~ are estimates.
       </p>
 
+      <div className="row-buttons">
+        <a className="btn" href={href(['set', product.id, 'quick'], { s: section.id })}>
+          Quick add by number
+        </a>
+      </div>
+
       <div className="pages">
         {pages.map((cards, i) => {
           const inPage = cards.filter((c) => byCard.has(cardKey(product.id, section.id, c.n))).length;
