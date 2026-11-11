@@ -22,10 +22,10 @@ export function warmUp() {
 const MAX_SIDE = 1400;
 
 /** Copies an image or video frame to a canvas, scaled to a size OCR handles well. */
-export function toCanvas(source: HTMLVideoElement | HTMLImageElement | ImageBitmap): HTMLCanvasElement {
+export function toCanvas(source: HTMLVideoElement | HTMLImageElement | ImageBitmap, maxSide = MAX_SIDE): HTMLCanvasElement {
   const w = 'videoWidth' in source ? source.videoWidth : source.width;
   const h = 'videoHeight' in source ? source.videoHeight : source.height;
-  const scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+  const scale = Math.min(1, maxSide / Math.max(w, h));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(w * scale);
   canvas.height = Math.round(h * scale);

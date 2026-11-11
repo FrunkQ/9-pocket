@@ -1,12 +1,17 @@
-// The user's collection. Kept in this browser's localStorage; the backup
-// download on the home screen is the way to keep it safe or move it.
+// The user's collection. Kept in this browser's localStorage (card photos
+// are in IndexedDB, see photos.ts); the backup download on the home screen is
+// the way to keep it safe or move it.
 import { useSyncExternalStore } from 'react';
 import type { CollectionState, Condition, Copy, Protection, Settings } from '../types';
 import { cardKey } from '../data/catalog';
+import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
 
 const STORAGE_KEY = 'ninepocket.v1';
 
-const EMPTY: CollectionState = { version: 1, copies: [], settings: { ebaySite: 'www.ebay.com' } };
+const EMPTY: CollectionState = { version: 1, copies: [], settings: { ebaySite: 'www.ebay.com', name: '', cameraId: '' } };
+
+/** Photos of the user's own cards (friends' shared pictures are keyed "friend:..."). */
+export const isOwnPhoto = (key: string) => !key.startsWith('friend:');
 
 function load(): CollectionState {
   try {
@@ -96,6 +101,7 @@ export function updateCopy(id: string, patch: Partial<Pick<Copy, 'version' | 'co
 
 export function removeCopy(id: string) {
   commit({ ...state, copies: state.copies.filter((c) => c.id !== id) });
+  void deletePhoto(id);
 }
 
 export function updateSettings(patch: Partial<Settings>) {
@@ -104,34 +110,47 @@ export function updateSettings(patch: Partial<Settings>) {
 
 // ---- Backup ---------------------------------------------------------
 
-export function exportBackup(): string {
-  return JSON.stringify({ app: 'nine-pocket', exported: new Date().toISOString(), ...state }, null, 2);
-}
-
-export function downloadBackup() {
-  const blob = new Blob([exportBackup()], { type: 'application/json' });
+export function saveFile(name: string, text: string) {
+  const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `nine-pocket-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export async function exportBackup(includePhotos: boolean): Promise<string> {
+  const photos = includePhotos ? await exportPhotos(isOwnPhoto) : undefined;
+  return JSON.stringify({ app: 'nine-pocket', exported: new Date().toISOString(), ...state, ...(photos ? { photos } : {}) }, null, includePhotos ? 0 : 2);
+}
+
+export async function downloadBackup(includePhotos: boolean) {
+  saveFile(`nine-pocket-backup-${new Date().toISOString().slice(0, 10)}.json`, await exportBackup(includePhotos));
+}
+
 /**
  * Restores a backup file. "merge" keeps what is here and adds copies that
  * are not already present; "replace" swaps the whole collection.
  */
-export function importBackup(json: string, mode: 'merge' | 'replace'): { added: number; total: number } {
-  const incoming = normalise(JSON.parse(json));
+export async function importBackup(json: string, mode: 'merge' | 'replace'): Promise<{ added: number; total: number; photos: number }> {
+  const parsed = JSON.parse(json) as { photos?: ExportedPhoto[] };
+  const incoming = normalise(parsed);
+  const incomingPhotos = Array.isArray(parsed.photos) ? parsed.photos.filter((p) => p && isOwnPhoto(String(p.key))) : [];
+  let added: number;
   if (mode === 'replace') {
-    commit(incoming);
-    return { added: incoming.copies.length, total: incoming.copies.length };
+    await deletePhotosWhere(isOwnPhoto);
+    commit({ ...incoming, settings: { ...incoming.settings, cameraId: state.settings.cameraId } });
+    added = incoming.copies.length;
+  } else {
+    const have = new Set(state.copies.map((c) => c.id));
+    const fresh = incoming.copies.filter((c) => !have.has(c.id));
+    commit({ ...state, copies: [...state.copies, ...fresh] });
+    added = fresh.length;
   }
-  const have = new Set(state.copies.map((c) => c.id));
-  const fresh = incoming.copies.filter((c) => !have.has(c.id));
-  commit({ ...state, copies: [...state.copies, ...fresh] });
-  return { added: fresh.length, total: state.copies.length };
+  const ids = new Set(state.copies.map((c) => c.id));
+  const photos = await importPhotos(incomingPhotos.filter((p) => ids.has(p.id)));
+  return { added, total: state.copies.length, photos };
 }

@@ -72,6 +72,10 @@ export interface Copy {
 
 export interface Settings {
   ebaySite: string;
+  /** Name shown to a friend when the collection is shared. */
+  name: string;
+  /** The rear camera chosen for scanning; empty lets the app choose. */
+  cameraId: string;
 }
 
 export interface CollectionState {

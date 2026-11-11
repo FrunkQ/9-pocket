@@ -258,7 +258,8 @@ button {
   font-weight: 600;
 }
 select,
-input[type='search'] {
+input[type='search'],
+input[type='text'] {
   min-height: 48px;
   padding: 0 12px;
   background: #fff;
@@ -267,8 +268,23 @@ input[type='search'] {
   font-size: 16px;
   max-width: 100%;
 }
-input[type='search'] {
+input[type='search'],
+input[type='text'] {
   width: 100%;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ink);
 }
 
 .segmented {
@@ -636,6 +652,19 @@ input[type='search'] {
   font-size: 9.5cqw;
 }
 
+/* The user's own scan of the card. */
+.face-photo {
+  padding: 0;
+  overflow: hidden;
+  background: var(--pocket);
+}
+.face-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .pocket-empty {
   aspect-ratio: 5 / 7;
   background: var(--pocket);
@@ -732,6 +761,33 @@ input[type='search'] {
   font-family: var(--mono);
   font-size: 14px;
   font-weight: 600;
+}
+.row-thumb {
+  flex: none;
+  width: 34px;
+  margin: 6px 0;
+}
+.tag {
+  flex: none;
+  padding: 3px 7px;
+  border: 1px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.tag-on {
+  background: var(--ink);
+  color: #fff;
+}
+.trade {
+  display: flex;
+  flex-direction: column;
+}
+.trade-empty {
+  padding: 12px 0;
+}
+.panel-first {
+  margin-top: 0;
 }
 .row-buy {
   flex: none;
@@ -891,8 +947,9 @@ input[type='search'] {
 
 .viewfinder {
   position: relative;
-  flex: 1;
-  min-height: 42dvh;
+  flex: none;
+  height: 64dvh;
+  min-height: 320px;
   background: #1e2225;
   overflow: hidden;
 }
@@ -903,18 +960,71 @@ input[type='search'] {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform-origin: center;
+}
+.viewfinder img {
+  object-fit: contain;
+  padding: 10px;
 }
 .viewfinder video.is-hidden {
   visibility: hidden;
 }
+/* The card should fill this frame: as large as the viewfinder allows at 5:7. */
 .guide {
   position: absolute;
   top: 50%;
   left: 50%;
-  height: 78%;
+  height: min(94%, calc((100vw - 28px) * 1.4));
   aspect-ratio: 5 / 7;
-  max-width: 78%;
   transform: translate(-50%, -50%);
+}
+.viewfinder-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: var(--page);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.scan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.zooms {
+  display: flex;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.zooms button {
+  min-width: 52px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+.zooms button:last-child {
+  border-right: none;
+}
+.zooms button.is-on {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+}
+.scan-tools select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 14px;
 }
 .guide i {
   position: absolute;

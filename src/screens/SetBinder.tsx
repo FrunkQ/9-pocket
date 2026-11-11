@@ -2,6 +2,7 @@ import { BackButton, BottomBar, Screen } from '../components/Chrome';
 import { CardFace, EmptyPocket } from '../components/CardFace';
 import { baseSections, cardKey, getProduct, insertSections, pagesOf } from '../data/catalog';
 import { copyValue, estimate, money, moneyTotal } from '../lib/estimate';
+import { photoFor, usePhotoVersion } from '../lib/photos';
 import { go, href, type Route } from '../lib/router';
 import { productStats } from '../lib/stats';
 import { copiesByCard, useCollection } from '../lib/store';
@@ -14,7 +15,7 @@ function Pocket({ product, section, card, copies }: { product: Product; section:
     const value = copies.reduce((sum, c) => sum + copyValue(c), 0);
     return (
       <a className="pocket" href={to} aria-label={`${card.p}, number ${card.n}, owned`}>
-        <CardFace card={card} />
+        <CardFace card={card} photo={photoFor(cardKey(product.id, section.id, card.n))?.thumb} />
         <span className="pocket-foot">
           <span>{money(value)}</span>
           <span className="dim">×{copies.length}</span>
@@ -36,6 +37,7 @@ function Pocket({ product, section, card, copies }: { product: Product; section:
 
 export function SetBinder({ route }: { route: Route }) {
   const state = useCollection();
+  usePhotoVersion();
   const product = getProduct(route.parts[1] ?? '');
   if (!product) return <NotFound />;
 

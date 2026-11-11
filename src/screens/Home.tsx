@@ -3,9 +3,11 @@ import { PRODUCTS, baseSections, cardKey } from '../data/catalog';
 import { BottomBar, Screen } from '../components/Chrome';
 import { EBAY_SITES } from '../lib/ebay';
 import { copyValue, moneyTotal } from '../lib/estimate';
+import { photoCount, usePhotoVersion } from '../lib/photos';
 import { href } from '../lib/router';
+import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { copiesByCard, downloadBackup, importBackup, updateSettings, useCollection } from '../lib/store';
+import { copiesByCard, downloadBackup, importBackup, isOwnPhoto, updateSettings, useCollection } from '../lib/store';
 import type { Copy, Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
@@ -28,7 +30,10 @@ function Backup() {
   const fileRef = useRef<HTMLInputElement>(null);
   const modeRef = useRef<'merge' | 'replace'>('merge');
   const [message, setMessage] = useState('');
+  const [withPhotos, setWithPhotos] = useState(true);
   const state = useCollection();
+  usePhotoVersion();
+  const photos = photoCount(isOwnPhoto);
 
   const pick = (mode: 'merge' | 'replace') => {
     if (mode === 'replace' && state.copies.length > 0) {
@@ -42,8 +47,9 @@ function Backup() {
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     try {
-      const result = importBackup(await file.text(), modeRef.current);
-      setMessage(modeRef.current === 'replace' ? `Restored ${result.total} cards from the backup.` : `Added ${result.added} cards from the backup. ${result.total} in total.`);
+      const result = await importBackup(await file.text(), modeRef.current);
+      const pictures = result.photos ? ` ${result.photos} card photos restored.` : '';
+      setMessage((modeRef.current === 'replace' ? `Restored ${result.total} cards from the backup.` : `Added ${result.added} cards from the backup. ${result.total} in total.`) + pictures);
     } catch {
       setMessage('That file could not be read as a Nine Pocket backup.');
     }
@@ -56,8 +62,16 @@ function Backup() {
         KEEP IT SAFE
       </h2>
       <p className="panel-text">Your collection is saved in this browser only. Download a backup file to keep a copy or move it to another device.</p>
+      {photos > 0 ? (
+        <label className="check">
+          <input type="checkbox" checked={withPhotos} onChange={(e) => setWithPhotos(e.target.checked)} />
+          <span>
+            Include the {photos} card {photos === 1 ? 'photo' : 'photos'} (a bigger file)
+          </span>
+        </label>
+      ) : null}
       <div className="row-buttons">
-        <button type="button" className="btn btn-ink" onClick={downloadBackup}>
+        <button type="button" className="btn btn-ink" onClick={() => void downloadBackup(withPhotos && photos > 0)}>
           Download backup
         </button>
         <button type="button" className="btn" onClick={() => pick('merge')}>
@@ -89,6 +103,7 @@ function Backup() {
 
 export function Home() {
   const state = useCollection();
+  const friends = useFriends();
   const byCard = copiesByCard(state);
   const total = state.copies.reduce((sum, c) => sum + copyValue(c), 0);
   const started = new Set(state.copies.map((c) => c.product)).size;
@@ -159,6 +174,18 @@ export function Home() {
           );
         })}
       </div>
+
+      <section className="panel" aria-labelledby="friends-title">
+        <h2 id="friends-title" className="eyebrow">
+          COMPARE WITH A FRIEND
+        </h2>
+        <p className="panel-text">Send your collection to someone, open theirs, and see which cards each of you could give the other.</p>
+        <div className="row-buttons">
+          <a className="btn btn-ink" href={href(['friends'])}>
+            Share and compare{friends.length ? ` (${friends.length})` : ''}
+          </a>
+        </div>
+      </section>
 
       <Backup />
 

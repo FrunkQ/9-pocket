@@ -2,13 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardFace } from '../components/CardFace';
 import { Tick } from '../components/Chrome';
 import { baseCount, cardKey, getProduct, versionsFor } from '../data/catalog';
+import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
 import { estimate, money } from '../lib/estimate';
 import { matchText, searchCards, type Candidate } from '../lib/match';
 import { readText, toCanvas, warmUp } from '../lib/ocr';
+import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
-import { addCopy, copiesByCard, useCollection } from '../lib/store';
+import { straighten } from '../lib/straighten';
+import { addCopy, copiesByCard, updateSettings, useCollection } from '../lib/store';
 
 type Camera = 'starting' | 'live' | 'blocked' | 'off';
+
+const ZOOMS = [1, 1.5, 2, 3];
+/** Spare border captured around the guide so the card's edges are in the picture. */
+const MARGIN = 0.08;
 
 function CandidateRow({ c, owned, onPick }: { c: Candidate; owned: boolean; onPick: () => void }) {
   return (
@@ -33,12 +40,21 @@ export function Scan({ route }: { route: Route }) {
   const prefer = route.query.get('set') ?? undefined;
   const preferProduct = prefer ? getProduct(prefer) : undefined;
   const typeMode = route.query.get('mode') === 'type';
+  const cameraId = state.settings.cameraId;
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const guideRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cardRef = useRef<HTMLCanvasElement | null>(null);
+  const autoPicked = useRef(false);
+
   const [camera, setCamera] = useState<Camera>(typeMode ? 'off' : 'starting');
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [zoom, setZoom] = useState(2);
   const [busy, setBusy] = useState(false);
   const [shot, setShot] = useState<string | null>(null);
+  const [flattened, setFlattened] = useState(false);
   const [found, setFound] = useState<Candidate[] | null>(null);
   const [problem, setProblem] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
@@ -60,23 +76,40 @@ export function Scan({ route }: { route: Route }) {
         setCamera('blocked');
         return;
       }
+      let stream: MediaStream;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+        stream = await openCamera(cameraId || undefined);
+      } catch {
+        if (cameraId) {
+          // The remembered lens is gone or refused: fall back to the default.
+          updateSettings({ cameraId: '' });
           return;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => undefined);
-        }
-        setCamera('live');
-      } catch {
         setCamera('blocked');
+        return;
+      }
+      if (cancelled) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+      void keepFocusing(track);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
+      }
+      setCamera('live');
+
+      const list = await rearCameras().catch(() => [] as MediaDeviceInfo[]);
+      if (cancelled) return;
+      setCameras(list);
+      // First time only: move to the phone's combined rear camera, which
+      // switches to its close-focus lens by itself.
+      if (!cameraId && !autoPicked.current) {
+        autoPicked.current = true;
+        const better = preferredCamera(list);
+        if (better && better.deviceId && better.deviceId !== track.getSettings().deviceId) updateSettings({ cameraId: better.deviceId });
       }
     };
     void start();
@@ -85,19 +118,22 @@ export function Scan({ route }: { route: Route }) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, [typeMode]);
+  }, [typeMode, cameraId]);
 
-  const read = async (canvas: HTMLCanvasElement) => {
+  const read = async (source: HTMLCanvasElement, margin: number) => {
     setBusy(true);
     setProblem('');
     setFound(null);
     setAdded('');
-    setShot(canvas.toDataURL('image/jpeg', 0.7));
     try {
-      const text = await readText(canvas);
+      const flat = straighten(source, 1000, margin);
+      cardRef.current = flat.canvas;
+      setFlattened(flat.found);
+      setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
+      const text = await readText(flat.canvas);
       const candidates = matchText(text, { preferProduct: prefer });
       setFound(candidates);
-      if (candidates.length === 0) setProblem('No player name could be read. Try again closer and flatter, or type the name below.');
+      if (candidates.length === 0) setProblem('No player name could be read. Try again with the card filling the frame, or type the name below.');
     } catch {
       setProblem('The text reader could not load. Check your connection, or type the name below.');
     } finally {
@@ -107,18 +143,26 @@ export function Scan({ route }: { route: Route }) {
 
   const capture = () => {
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return;
-    void read(toCanvas(video));
+    const view = viewRef.current;
+    const guide = guideRef.current;
+    if (!video || !view || !guide || video.videoWidth === 0) return;
+    const rect = guideCrop(view.getBoundingClientRect(), guide.getBoundingClientRect(), video.videoWidth, video.videoHeight, zoom, MARGIN);
+    void read(cropFrame(video, rect), MARGIN / (1 + MARGIN * 2));
   };
 
   const onPhoto = async (file: File | undefined) => {
     if (!file) return;
     try {
       const bitmap = await createImageBitmap(file);
-      await read(toCanvas(bitmap));
+      await read(toCanvas(bitmap, 2000), 0);
     } catch {
       setProblem('That photo could not be opened.');
     }
+  };
+
+  const tapFocus = () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (track && !shot) void refocus(track);
   };
 
   const pick = (c: Candidate) => {
@@ -132,12 +176,14 @@ export function Scan({ route }: { route: Route }) {
     setShot(null);
     setProblem('');
     setQuery('');
+    cardRef.current = null;
   };
 
   const confirm = () => {
     if (!picked) return;
-    addCopy({ product: picked.product.id, section: picked.section.id, n: picked.card.n, version });
+    const copy = addCopy({ product: picked.product.id, section: picked.section.id, n: picked.card.n, version });
     const key = cardKey(picked.product.id, picked.section.id, picked.card.n);
+    if (cardRef.current) void savePhoto(copy.id, key, cardRef.current);
     const ownedNow = new Set(state.copies.filter((c) => c.product === picked.product.id && picked.product.sections.some((s) => s.kind === 'base' && s.id === c.section)).map((c) => cardKey(c.product, c.section, c.n)));
     if (picked.section.kind === 'base') ownedNow.add(key);
     setAdded(`Added ${picked.card.p} #${picked.card.n}. ${picked.product.name}: ${ownedNow.size}/${baseCount(picked.product)}.`);
@@ -171,11 +217,11 @@ export function Scan({ route }: { route: Route }) {
       </header>
 
       {typeMode ? null : (
-        <div className="viewfinder">
-          <video ref={videoRef} playsInline muted className={shot ? 'is-hidden' : ''} />
-          {shot ? <img src={shot} alt="The photo being read" /> : null}
+        <div className="viewfinder" ref={viewRef} onClick={tapFocus}>
+          <video ref={videoRef} playsInline muted className={shot ? 'is-hidden' : ''} style={{ transform: `scale(${zoom})` }} />
+          {shot ? <img src={shot} alt="The card as it will be saved" /> : null}
           {camera === 'live' && !shot ? (
-            <div className="guide" aria-hidden="true">
+            <div className="guide" ref={guideRef} aria-hidden="true">
               <i />
               <i />
               <i />
@@ -190,6 +236,7 @@ export function Scan({ route }: { route: Route }) {
           ) : null}
           {camera === 'starting' ? <div className="viewfinder-note">Starting camera…</div> : null}
           {busy ? <div className="viewfinder-busy">Reading the card…</div> : null}
+          {shot && !busy ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
         </div>
       )}
 
@@ -205,7 +252,7 @@ export function Scan({ route }: { route: Route }) {
           <div className="confirm">
             <div className="confirm-head">
               <div className="confirm-art">
-                <CardFace card={picked.card} />
+                <CardFace card={picked.card} photo={shot ?? undefined} />
               </div>
               <div className="confirm-info">
                 <div className="display-m">{(picked.card.p || 'Card').toUpperCase()}</div>
@@ -248,21 +295,40 @@ export function Scan({ route }: { route: Route }) {
         ) : (
           <>
             {typeMode ? null : (
-              <div className="row-buttons">
-                <button type="button" className="btn btn-red btn-big" onClick={capture} disabled={camera !== 'live' || busy}>
-                  {busy ? 'READING…' : shot ? 'READ AGAIN' : 'READ CARD'}
-                </button>
-                <label className="btn btn-big btn-file">
-                  USE A PHOTO
-                  <input type="file" accept="image/*" capture="environment" onChange={(e) => void onPhoto(e.target.files?.[0])} />
-                </label>
-              </div>
+              <>
+                <div className="row-buttons">
+                  <button type="button" className="btn btn-red btn-big" onClick={shot ? reset : capture} disabled={camera !== 'live' || busy}>
+                    {busy ? 'READING…' : shot ? 'SCAN AGAIN' : 'READ CARD'}
+                  </button>
+                  <label className="btn btn-big btn-file">
+                    USE A PHOTO
+                    <input type="file" accept="image/*" capture="environment" onChange={(e) => void onPhoto(e.target.files?.[0])} />
+                  </label>
+                </div>
+                {camera === 'live' && !shot ? (
+                  <div className="scan-tools">
+                    <div className="zooms" role="group" aria-label="Zoom">
+                      {ZOOMS.map((z) => (
+                        <button key={z} type="button" className={zoom === z ? 'is-on' : ''} aria-pressed={zoom === z} onClick={() => setZoom(z)}>
+                          {z}×
+                        </button>
+                      ))}
+                    </div>
+                    {cameras.length > 1 ? (
+                      <select aria-label="Camera" value={cameraId} onChange={(e) => updateSettings({ cameraId: e.target.value })}>
+                        <option value="">Default camera</option>
+                        {cameras.map((d, i) => (
+                          <option key={d.deviceId} value={d.deviceId}>
+                            {d.label || `Camera ${i + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                  </div>
+                ) : null}
+                {camera === 'live' && !shot ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus.</p> : null}
+              </>
             )}
-            {shot && !busy ? (
-              <button type="button" className="link-plain" onClick={reset}>
-                Back to live camera
-              </button>
-            ) : null}
 
             <label className="field">
               <span className="field-label">{typeMode ? 'Player name or card number' : 'Or type the player name or number'}</span>

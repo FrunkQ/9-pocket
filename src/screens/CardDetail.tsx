@@ -3,6 +3,7 @@ import { Screen, Segmented, Tick } from '../components/Chrome';
 import { cardKey, getCard, getProduct, getSection, versionsFor } from '../data/catalog';
 import { ebaySearchUrl, ebaySoldUrl } from '../lib/ebay';
 import { copyValue, estimate, money, moneyTotal } from '../lib/estimate';
+import { photoFor, usePhotoVersion } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { addCopy, copiesByCard, removeCopy, updateCopy, useCollection } from '../lib/store';
 import { CONDITIONS, PROTECTIONS } from '../types';
@@ -10,13 +11,16 @@ import { NotFound } from './NotFound';
 
 export function CardDetail({ route }: { route: Route }) {
   const state = useCollection();
+  usePhotoVersion();
   const [, productId = '', sectionId = '', n = ''] = route.parts;
   const product = getProduct(productId);
   const section = product && getSection(product, sectionId);
   const card = section && getCard(section, n);
   if (!product || !section || !card) return <NotFound />;
 
-  const copies = copiesByCard(state).get(cardKey(product.id, section.id, card.n)) ?? [];
+  const key = cardKey(product.id, section.id, card.n);
+  const copies = copiesByCard(state).get(key) ?? [];
+  const photo = photoFor(key);
   const versions = versionsFor(product, section, card);
   const ownedVersions = new Set(copies.map((c) => c.version));
   const value = copies.reduce((sum, c) => sum + copyValue(c), 0);
@@ -41,8 +45,8 @@ export function CardDetail({ route }: { route: Route }) {
         </div>
         <h1 className="display-l card-name">{(card.p || 'Card').toUpperCase()}</h1>
         <div className="card-head-body">
-          <div className={copies.length > 0 ? 'card-art' : 'card-art card-art-missing'}>
-            <CardFace card={card} size="large" />
+          <div className={copies.length > 0 ? (photo ? 'card-art card-art-photo' : 'card-art') : 'card-art card-art-missing'}>
+            <CardFace card={card} size="large" photo={photo?.full} />
           </div>
           <div className="card-head-info">
             <div className="sub sub-light">

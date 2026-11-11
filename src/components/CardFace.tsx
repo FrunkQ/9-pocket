@@ -16,10 +16,17 @@ export function shortName(player: string): string {
 }
 
 /**
- * The plain card face used until real card images are available: team colour,
- * team code, name and number.
+ * A card. Shows the user's own scan when there is one; otherwise a plain
+ * face with the team colour, team code, name and number.
  */
-export function CardFace({ card, size = 'pocket' }: { card: Card; size?: 'pocket' | 'large' }) {
+export function CardFace({ card, size = 'pocket', photo }: { card: Card; size?: 'pocket' | 'large'; photo?: string }) {
+  if (photo) {
+    return (
+      <div className={`face face-photo face-${size}`}>
+        <img src={photo} alt={`${card.p || 'Card'} number ${card.n}`} loading="lazy" />
+      </div>
+    );
+  }
   const team = teamColors(card.t);
   const code = card.t.split('/')[0] || '—';
   return (
