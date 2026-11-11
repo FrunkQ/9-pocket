@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { PRODUCTS, baseSections, cardKey } from '../data/catalog';
+import { baseSections, cardKey, categoryOf, getProduct, useCatalogVersion } from '../data/catalog';
 import { BottomBar, Screen } from '../components/Chrome';
 import { EBAY_SITES } from '../lib/ebay';
 import { copyValue, moneyTotal } from '../lib/estimate';
@@ -7,8 +7,8 @@ import { photoCount, usePhotoVersion } from '../lib/photos';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { copiesByCard, downloadBackup, importBackup, isOwnPhoto, updateSettings, useCollection } from '../lib/store';
-import type { Copy, Product } from '../types';
+import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isOwnPhoto, updateSettings, useCollection } from '../lib/store';
+import { CATEGORIES, type Copy, type Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
 function Fingerprint({ product, byCard }: { product: Product; byCard: Map<string, Copy[]> }) {
@@ -56,6 +56,11 @@ function Backup() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  const erase = () => {
+    const ok = window.confirm('Erase everything Nine Pocket has saved on this device: every card, photo, set and friend? This cannot be undone.');
+    if (ok) void eraseEverything();
+  };
+
   return (
     <section className="panel" aria-labelledby="backup-title">
       <h2 id="backup-title" className="eyebrow">
@@ -97,6 +102,13 @@ function Backup() {
           ))}
         </select>
       </label>
+      <details className="advanced">
+        <summary>Advanced</summary>
+        <p className="panel-text">For testing. Removes every card, photo, downloaded set and friend from this device and starts the app fresh.</p>
+        <button type="button" className="link-danger" onClick={erase}>
+          Erase everything on this device
+        </button>
+      </details>
     </section>
   );
 }
@@ -104,9 +116,13 @@ function Backup() {
 export function Home() {
   const state = useCollection();
   const friends = useFriends();
+  useCatalogVersion();
   const byCard = copiesByCard(state);
   const total = state.copies.reduce((sum, c) => sum + copyValue(c), 0);
-  const started = new Set(state.copies.map((c) => c.product)).size;
+  const all = binderIds(state);
+  const category = state.settings.category;
+  const mine = all.filter((id) => categoryOf(id) === category);
+  const label = CATEGORIES.find((c) => c.id === category)?.label ?? '';
 
   return (
     <Screen>
@@ -123,44 +139,43 @@ export function Home() {
         <div className="home-count">
           {state.copies.length} {state.copies.length === 1 ? 'card' : 'cards'}
           <br />
-          {started} of {PRODUCTS.length} sets started
+          {all.length} {all.length === 1 ? 'set' : 'sets'}
         </div>
       </div>
 
       <div className="sports" role="group" aria-label="Card type">
-        <button type="button" className="is-on" aria-pressed="true">
-          <span>Hockey</span>
-          <small>{PRODUCTS.length} sets</small>
-        </button>
-        <button type="button" disabled>
-          <span>Baseball</span>
-          <small>next</small>
-        </button>
-        <button type="button" disabled>
-          <span>Magic</span>
-          <small>later</small>
-        </button>
-        <button type="button" disabled>
-          <span>Pokémon</span>
-          <small>later</small>
-        </button>
+        {CATEGORIES.map((c) => {
+          const n = all.filter((id) => categoryOf(id) === c.id).length;
+          return (
+            <button key={c.id} type="button" className={c.id === category ? 'is-on' : ''} aria-pressed={c.id === category} disabled={!c.ready} onClick={() => updateSettings({ category: c.id })}>
+              <span>{c.label}</span>
+              <small>{c.ready ? `${n} ${n === 1 ? 'set' : 'sets'}` : 'later'}</small>
+            </button>
+          );
+        })}
       </div>
 
-      <p className="mono-note legend">Each square is one card number. Lit means you have it. Values marked ~ are estimates.</p>
+      {mine.length > 0 ? <p className="mono-note legend">Each square is one card number. Lit means you have it. Values marked ~ are estimates.</p> : null}
 
       <div className="binders">
-        {PRODUCTS.map((product) => {
+        {mine.map((id) => {
+          const product = getProduct(id);
+          if (!product) {
+            return (
+              <a key={id} className="binder-card binder-card-off" href={href(['set', id])}>
+                <div className="binder-card-sub">This set has not downloaded yet. Open it when you are online.</div>
+              </a>
+            );
+          }
           const stats = productStats(product, byCard, state.copies);
           return (
-            <a key={product.id} className="binder-card" href={href(['set', product.id])}>
+            <a key={id} className="binder-card" href={href(['set', id])}>
               <div className="binder-card-top">
                 <div>
                   <div className="display-m">{product.name.toUpperCase()}</div>
-                  <div className="binder-card-sub">
-                    {product.season} {product.brand}
-                  </div>
+                  <div className="binder-card-sub">{[product.season, product.brand].filter(Boolean).join(' ')}</div>
                 </div>
-                <div className="display-m">
+                <div className="display-m binder-card-count">
                   {stats.owned}
                   <span className="dim">/{stats.total}</span>
                 </div>
@@ -173,6 +188,10 @@ export function Home() {
             </a>
           );
         })}
+        <a className="binder-add" href={href(['add'], { c: category })}>
+          <span className="display-m">ADD A SET</span>
+          <span>{mine.length === 0 ? `No ${label} sets yet. Pick one from the list, or scan a card and the app will find its set.` : `Browse every ${label} set`}</span>
+        </a>
       </div>
 
       <section className="panel" aria-labelledby="friends-title">

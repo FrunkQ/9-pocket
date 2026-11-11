@@ -20,10 +20,12 @@ export function shortName(player: string): string {
  * face with the team colour, team code, name and number.
  */
 export function CardFace({ card, size = 'pocket', photo }: { card: Card; size?: 'pocket' | 'large'; photo?: string }) {
-  if (photo) {
+  // The user's own scan first, then the stock picture from the card database.
+  const picture = photo ?? (size === 'large' ? card.imgL ?? card.img : card.img);
+  if (picture) {
     return (
       <div className={`face face-photo face-${size}`}>
-        <img src={photo} alt={`${card.p || 'Card'} number ${card.n}`} loading="lazy" />
+        <img src={picture} alt={`${card.p || 'Card'} number ${card.n}`} loading="lazy" />
       </div>
     );
   }
@@ -46,7 +48,8 @@ export function CardFace({ card, size = 'pocket', photo }: { card: Card; size?: 
 /** An empty binder pocket: dark until the card is scanned. */
 export function EmptyPocket({ card }: { card: Card }) {
   return (
-    <div className="pocket-empty">
+    <div className={card.img ? 'pocket-empty pocket-ghost' : 'pocket-empty'}>
+      {card.img ? <img src={card.img} alt="" loading="lazy" /> : null}
       <span className="pocket-no">{card.n}</span>
       <span className="pocket-who">
         {shortName(card.p) || 'Card'}

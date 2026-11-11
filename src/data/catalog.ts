@@ -1,17 +1,146 @@
-import type { Card, Parallel, Product, Section } from '../types';
-import allure from './sets/allure-2025-26.json';
-import series1 from './sets/series-1-2025-26.json';
-import mvp from './sets/mvp-2026-27.json';
-import spAuthentic from './sets/sp-authentic-2023-24.json';
+// The sets the app knows about. Sets are downloaded when first needed and
+// kept on the device, so only the ones a person collects take up space.
+// Everything else in the app reads loaded sets synchronously from here.
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { Card, Category, Parallel, Product, Section, SetInfo } from '../types';
+import { dbRun } from '../lib/db';
+import { categoryOf, PROVIDERS } from './providers';
 
-/** Every set the app knows. Adding a set = adding its JSON file here. */
-export const PRODUCTS: Product[] = [allure, series1, mvp, spAuthentic] as unknown as Product[];
+export { categoryOf };
 
-const byId = new Map(PRODUCTS.map((p) => [p.id, p]));
+const loaded = new Map<string, Product>();
+const pending = new Map<string, Promise<Product | null>>();
+let version = 0;
+const listeners = new Set<() => void>();
+
+function bump() {
+  version++;
+  listeners.forEach((l) => l());
+}
+
+/** Re-renders the caller when a set finishes loading. */
+export function useCatalogVersion(): number {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => version,
+  );
+}
 
 export function getProduct(id: string): Product | undefined {
-  return byId.get(id);
+  return loaded.get(id);
 }
+
+export function loadedProducts(): Product[] {
+  return [...loaded.values()];
+}
+
+// Prices from a live source go stale; refresh those sets now and then.
+const STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function download(id: string): Promise<Product | null> {
+  const product = await PROVIDERS[categoryOf(id)].load(id).catch(() => null);
+  if (!product) return null;
+  // Older files may lack the category.
+  const complete: Product = { ...product, category: product.category ?? categoryOf(id) };
+  void dbRun('sets', 'readwrite', (s) => s.put(complete)).catch(() => undefined);
+  return complete;
+}
+
+/** Makes a set available: from memory, then the device, then the network. */
+export function ensureProduct(id: string): Promise<Product | null> {
+  const have = loaded.get(id);
+  if (have) return Promise.resolve(have);
+  let job = pending.get(id);
+  if (!job) {
+    job = (async () => {
+      const cached = await dbRun<Product | undefined>('sets', 'readonly', (s) => s.get(id)).catch(() => undefined);
+      const product = cached ?? (await download(id));
+      if (!product) return null;
+      loaded.set(id, product);
+      bump();
+      const age = product.fetched ? Date.now() - Date.parse(product.fetched) : 0;
+      if (cached && categoryOf(id) !== 'hockey' && age > STALE_MS) void refreshProduct(id);
+      return product;
+    })();
+    pending.set(id, job);
+    void job.finally(() => pending.delete(id));
+  }
+  return job;
+}
+
+/** Downloads a fresh copy of a set (new cards, current prices). */
+export async function refreshProduct(id: string): Promise<boolean> {
+  const fresh = await download(id);
+  if (!fresh) return false;
+  loaded.set(id, fresh);
+  bump();
+  return true;
+}
+
+export function ensureProducts(ids: Iterable<string>): Promise<unknown> {
+  return Promise.allSettled([...new Set(ids)].map(ensureProduct));
+}
+
+export type ProductStatus = 'ready' | 'loading' | 'missing';
+
+/** A set for a screen that needs it, loading it if necessary. */
+export function useProduct(id: string): { product: Product | undefined; status: ProductStatus } {
+  useCatalogVersion();
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    if (!id || getProduct(id)) return;
+    let live = true;
+    ensureProduct(id).then((p) => {
+      if (live && !p) setFailed(id);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  const product = getProduct(id);
+  return { product, status: product ? 'ready' : failed === id || !id ? 'missing' : 'loading' };
+}
+
+/** True once every listed set has been loaded (or has failed to). */
+export function useProductsReady(ids: string[]): boolean {
+  useCatalogVersion();
+  const key = [...new Set(ids)].sort().join(',');
+  const [done, setDone] = useState('');
+  useEffect(() => {
+    let live = true;
+    void ensureProducts(key ? key.split(',') : []).then(() => {
+      if (live) setDone(key);
+    });
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  // Already-loaded sets never cause a wait (adding a binder that was just downloaded, say).
+  return done === key || ids.every((id) => loaded.has(id));
+}
+
+const lists = new Map<Category, Promise<SetInfo[]>>();
+
+/** Every set available for a kind of card. */
+export function listSets(category: Category): Promise<SetInfo[]> {
+  let job = lists.get(category);
+  if (!job) {
+    job = PROVIDERS[category].list();
+    lists.set(category, job);
+    job.then(
+      (sets) => {
+        if (sets.length === 0) lists.delete(category);
+      },
+      () => lists.delete(category),
+    );
+  }
+  return job;
+}
+
+// ---- Reading a loaded set ----------------------------------------------
 
 export function getSection(product: Product, sectionId: string): Section | undefined {
   return product.sections.find((s) => s.id === sectionId);
@@ -62,6 +191,7 @@ export function pagesOf<T>(items: T[], size = 9): T[][] {
   return pages;
 }
 
-export function productTitle(product: Product): string {
-  return `${product.season} ${product.brand} ${product.name}`;
+/** "2025-26 Upper Deck Allure", "Magic Bloomburrow (2024)". */
+export function productTitle(product: Product | SetInfo): string {
+  return [product.season, product.brand, product.name].filter(Boolean).join(' ');
 }

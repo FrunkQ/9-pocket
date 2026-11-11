@@ -9,7 +9,8 @@
     "dev:phone": "vite --host --mode phone",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "data": "node scripts/build-checklists.mjs"
+    "data:fetch": "node scripts/fetch-ud-hockey.mjs",
+    "data": "node scripts/build-catalog.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

@@ -1,21 +1,22 @@
 import { CardFace } from '../components/CardFace';
 import { Screen, Segmented, Tick } from '../components/Chrome';
-import { cardKey, getCard, getProduct, getSection, versionsFor } from '../data/catalog';
+import { cardKey, getCard, getSection, useProduct, versionsFor } from '../data/catalog';
 import { ebaySearchUrl, ebaySoldUrl } from '../lib/ebay';
-import { copyValue, estimate, money, moneyTotal } from '../lib/estimate';
+import { copyValue, marketPrice, moneyTotal, priceText } from '../lib/estimate';
 import { photoFor, usePhotoVersion } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { addCopy, copiesByCard, removeCopy, updateCopy, useCollection } from '../lib/store';
 import { CONDITIONS, PROTECTIONS } from '../types';
-import { NotFound } from './NotFound';
+import { Loading, NotFound } from './NotFound';
 
 export function CardDetail({ route }: { route: Route }) {
   const state = useCollection();
   usePhotoVersion();
   const [, productId = '', sectionId = '', n = ''] = route.parts;
-  const product = getProduct(productId);
+  const { product, status } = useProduct(productId);
   const section = product && getSection(product, sectionId);
   const card = section && getCard(section, n);
+  if (!product && status === 'loading') return <Loading />;
   if (!product || !section || !card) return <NotFound />;
 
   const key = cardKey(product.id, section.id, card.n);
@@ -24,11 +25,12 @@ export function CardDetail({ route }: { route: Route }) {
   const versions = versionsFor(product, section, card);
   const ownedVersions = new Set(copies.map((c) => c.version));
   const value = copies.reduce((sum, c) => sum + copyValue(c), 0);
-  const basePrice = card.po ? null : estimate(product, section, card);
+  const baseText = card.po ? '' : priceText(product, section, card);
   const site = state.settings.ebaySite;
   const backTo = section.kind === 'base' ? href(['set', product.id], { s: section.id }) : href(['set', product.id], { s: 'inserts', i: section.id });
 
-  const facts = [`No. ${card.n}`, card.t, card.rc ? 'Rookie' : '', card.sn ? `/${card.sn}` : '', card.au ? 'Autograph' : '', card.sp ?? ''].filter(Boolean).join(' · ');
+  const facts = [`No. ${card.n}`, card.t, card.sub ?? '', card.rc ? 'Rookie' : '', card.sn ? `/${card.sn}` : '', card.au ? 'Autograph' : '', card.sp ?? ''].filter(Boolean).join(' · ');
+  const priced = marketPrice(card) !== undefined;
   const add = (version: string) => addCopy({ product: product.id, section: section.id, n: card.n, version });
 
   return (
@@ -39,7 +41,8 @@ export function CardDetail({ route }: { route: Route }) {
             <svg aria-hidden="true" width="9" height="16" viewBox="0 0 9 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square">
               <path d="M7 2L2 8l5 6" />
             </svg>
-            {product.name}, {section.name.toLowerCase()}
+            {product.name}
+            {section.id === 'base' ? '' : `, ${section.name.toLowerCase()}`}
           </a>
           <span className="mono-note mono-light">{copies.length > 0 ? 'IN THE BINDER' : 'MISSING'}</span>
         </div>
@@ -56,8 +59,8 @@ export function CardDetail({ route }: { route: Route }) {
               {section.kind === 'insert' ? ` · ${section.name}` : ''}
             </div>
             <div>
-              <div className="price-l">{copies.length > 0 ? moneyTotal(value) : money(basePrice)}</div>
-              <div className="mono-note mono-light">{copies.length > 0 ? `your ${copies.length} ${copies.length === 1 ? 'copy' : 'copies'}, estimate` : 'estimate, base, near mint'}</div>
+              <div className="price-l">{copies.length === 1 ? priceText(product, section, card, copies[0].version, copies[0].condition) : copies.length > 1 ? moneyTotal(value) : baseText}</div>
+              <div className="mono-note mono-light">{copies.length > 0 ? `your ${copies.length} ${copies.length === 1 ? 'copy' : 'copies'}` : priced ? 'market price, near mint' : 'estimate, base, near mint'}</div>
             </div>
           </div>
         </div>
@@ -84,7 +87,7 @@ export function CardDetail({ route }: { route: Route }) {
               COPY {i + 1} OF {copies.length}
             </span>
             <span className="mono-note">
-              added {new Date(copy.added).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {money(copyValue(copy) || null)}
+              added {new Date(copy.added).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {priceText(product, section, card, copy.version, copy.condition)}
             </span>
           </div>
           <label className="field">
@@ -121,7 +124,7 @@ export function CardDetail({ route }: { route: Route }) {
                 <div className="row-main">
                   <Tick on={ownedVersions.has('base')} />
                   <span className="row-name">Base</span>
-                  <span className="row-price">{money(basePrice)}</span>
+                  <span className="row-price">{baseText}</span>
                 </div>
                 <button type="button" className="row-buy" onClick={() => add('base')} aria-label="Add a base copy">
                   Add
@@ -135,7 +138,7 @@ export function CardDetail({ route }: { route: Route }) {
                   <span className="row-name">
                     {v.name} {v.sn ? <small>/{v.sn}</small> : null}
                   </span>
-                  <span className="row-price">{money(estimate(product, section, card, v.id))}</span>
+                  <span className="row-price">{priceText(product, section, card, v.id)}</span>
                 </div>
                 <button type="button" className="row-buy" onClick={() => add(v.id)} aria-label={`Add a ${v.name} copy`}>
                   Add

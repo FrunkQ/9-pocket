@@ -1,6 +1,16 @@
 import { Screen } from '../components/Chrome';
 import { href } from '../lib/router';
 
+export function Loading({ what = 'LOADING…' }: { what?: string }) {
+  return (
+    <Screen>
+      <div className="empty">
+        <h1 className="display-l">{what}</h1>
+      </div>
+    </Screen>
+  );
+}
+
 export function NotFound() {
   return (
     <Screen>

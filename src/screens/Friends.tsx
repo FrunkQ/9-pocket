@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackButton, Screen } from '../components/Chrome';
 import { CardFace } from '../components/CardFace';
-import { cardKey } from '../data/catalog';
+import { cardKey, useProductsReady } from '../data/catalog';
 import { photoCount, photoFor, usePhotoVersion } from '../lib/photos';
 import { go, href, type Route } from '../lib/router';
 import { buildShareFile, compare, decodeShare, encodeShare, friendPhotoKey, parseShareFile, removeFriend, saveFriend, shareUrl, tokenFromLink, useFriends, type TradeCard } from '../lib/share';
 import { isOwnPhoto, saveFile, updateSettings, useCollection } from '../lib/store';
-import { NotFound } from './NotFound';
+import { Loading, NotFound } from './NotFound';
 
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -244,7 +244,10 @@ export function CompareFriend({ route }: { route: Route }) {
   const friends = useFriends();
   usePhotoVersion();
   const friend = friends.find((f) => f.id === route.parts[1]);
+  // Their sets may not be on this device yet; fetch them before comparing.
+  const ready = useProductsReady((friend?.copies ?? []).map((c) => c.product));
   if (!friend) return <NotFound />;
+  if (!ready) return <Loading what="LOADING THEIR SETS…" />;
 
   const result = compare(state.copies, friend.copies);
   const spareIn = result.theyHave.filter((c) => c.held > 1).length;

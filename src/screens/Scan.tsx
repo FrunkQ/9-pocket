@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardFace } from '../components/CardFace';
 import { Tick } from '../components/Chrome';
-import { baseCount, cardKey, getProduct, versionsFor } from '../data/catalog';
+import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, useCatalogVersion, versionsFor } from '../data/catalog';
 import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
-import { estimate, money } from '../lib/estimate';
-import { matchText, searchCards, type Candidate } from '../lib/match';
-import { readText, toCanvas, warmUp } from '../lib/ocr';
+import { priceText } from '../lib/estimate';
+import { findSets, type SetHit } from '../lib/identify';
+import { isConfident, matchText, searchCards, type Candidate } from '../lib/match';
+import { PASS_COUNT, readCard, toCanvas, warmUp } from '../lib/ocr';
 import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { straighten } from '../lib/straighten';
-import { addCopy, copiesByCard, updateSettings, useCollection } from '../lib/store';
+import { addBinder, addCopy, copiesByCard, updateSettings, useCollection } from '../lib/store';
+import { CATEGORIES, type Category } from '../types';
 
 type Camera = 'starting' | 'live' | 'blocked' | 'off';
 
 const ZOOMS = [1, 1.5, 2, 3];
 /** Spare border captured around the guide so the card's edges are in the picture. */
 const MARGIN = 0.08;
+
+const where = (c: Candidate) => [c.card.t, [c.product.name, c.product.season].filter(Boolean).join(' '), c.section.id === 'base' ? '' : c.section.name].filter(Boolean).join(' · ');
 
 function CandidateRow({ c, owned, onPick }: { c: Candidate; owned: boolean; onPick: () => void }) {
   return (
@@ -24,11 +28,7 @@ function CandidateRow({ c, owned, onPick }: { c: Candidate; owned: boolean; onPi
         <Tick on={owned} />
         <span className="row-no">{c.card.n}</span>
         <span className="row-name">
-          {c.card.p || 'Card'}{' '}
-          <small>
-            {c.card.t} · {c.product.name} {c.product.season}
-            {c.section.id === 'base' ? '' : ` · ${c.section.name}`}
-          </small>
+          {c.card.p || 'Card'} <small>{where(c)}</small>
         </span>
       </button>
     </li>
@@ -37,25 +37,32 @@ function CandidateRow({ c, owned, onPick }: { c: Candidate; owned: boolean; onPi
 
 export function Scan({ route }: { route: Route }) {
   const state = useCollection();
+  const catalogVersion = useCatalogVersion();
   const prefer = route.query.get('set') ?? undefined;
   const preferProduct = prefer ? getProduct(prefer) : undefined;
   const typeMode = route.query.get('mode') === 'type';
   const cameraId = state.settings.cameraId;
+  const category: Category = prefer ? categoryOf(prefer) : state.settings.category;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const guideRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const cardRef = useRef<HTMLCanvasElement | null>(null);
+  const textRef = useRef('');
   const autoPicked = useRef(false);
 
   const [camera, setCamera] = useState<Camera>(typeMode ? 'off' : 'starting');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [zoom, setZoom] = useState(2);
   const [busy, setBusy] = useState(false);
+  const [pass, setPass] = useState(0);
   const [shot, setShot] = useState<string | null>(null);
   const [flattened, setFlattened] = useState(false);
   const [found, setFound] = useState<Candidate[] | null>(null);
+  const [others, setOthers] = useState<SetHit[] | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [fetching, setFetching] = useState('');
   const [problem, setProblem] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [version, setVersion] = useState('base');
@@ -65,7 +72,8 @@ export function Scan({ route }: { route: Route }) {
 
   const byCard = copiesByCard(state);
   const isOwned = (c: Candidate) => byCard.has(cardKey(c.product.id, c.section.id, c.card.n));
-  const typed = useMemo(() => searchCards(query, { preferProduct: prefer }), [query, prefer]);
+  // Recomputed when a set finishes downloading, so its cards show up at once.
+  const typed = useMemo(() => searchCards(query, { preferProduct: prefer }), [query, prefer, catalogVersion]);
 
   useEffect(() => {
     if (typeMode) return;
@@ -122,18 +130,25 @@ export function Scan({ route }: { route: Route }) {
 
   const read = async (source: HTMLCanvasElement, margin: number) => {
     setBusy(true);
+    setPass(0);
     setProblem('');
     setFound(null);
+    setOthers(null);
     setAdded('');
     try {
       const flat = straighten(source, 1000, margin);
       cardRef.current = flat.canvas;
       setFlattened(flat.found);
       setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
-      const text = await readText(flat.canvas);
-      const candidates = matchText(text, { preferProduct: prefer });
-      setFound(candidates);
-      if (candidates.length === 0) setProblem('No player name could be read. Try again with the card filling the frame, or type the name below.');
+      let best: Candidate[] = [];
+      // Read the card several ways, stopping as soon as one reading is convincing.
+      textRef.current = await readCard(flat.canvas, (text, n) => {
+        best = matchText(text, { preferProduct: prefer });
+        setPass(n + 1);
+        return isConfident(best);
+      });
+      setFound(best);
+      if (best.length === 0) setProblem('That card is not in the sets on this device. Look for its set below, try the back of the card (plainer lettering), or type the name.');
     } catch {
       setProblem('The text reader could not load. Check your connection, or type the name below.');
     } finally {
@@ -165,6 +180,43 @@ export function Scan({ route }: { route: Route }) {
     if (track && !shot) void refocus(track);
   };
 
+  /** Looks for the card in sets that are not on the device yet. */
+  const lookElsewhere = async (kind: Category) => {
+    const text = query.trim() || textRef.current;
+    if (!text.trim()) return;
+    updateSettings({ category: kind });
+    setLooking(true);
+    setProblem('');
+    const hits = await findSets(text, kind);
+    setLooking(false);
+    setOthers(hits);
+    if (hits.length === 0) setProblem(`No ${CATEGORIES.find((c) => c.id === kind)?.label ?? ''} set was found for that. Try the back of the card, or add the set from the list.`);
+  };
+
+  /** Downloads a suggested set, adds it as a binder, and goes straight to the card. */
+  const useSet = async (hit: SetHit) => {
+    setFetching(hit.set.id);
+    const product = await ensureProduct(hit.set.id);
+    setFetching('');
+    if (!product) {
+      setProblem(`${hit.set.name} could not be downloaded. Check your connection.`);
+      return;
+    }
+    addBinder(product.id);
+    setOthers(null);
+    // The source told us the exact card where it could; otherwise match again within the new set.
+    for (const section of product.sections) {
+      const card = hit.n ? getCard(section, hit.n) : undefined;
+      if (card) {
+        pick({ product, section, card, score: 1, name: 1, evidence: [] });
+        return;
+      }
+    }
+    const again = (query.trim() ? searchCards(query, { preferProduct: product.id }) : matchText(textRef.current, { preferProduct: product.id })).filter((c) => c.product.id === product.id);
+    if (again.length === 1) pick(again[0]);
+    else setFound(again);
+  };
+
   const pick = (c: Candidate) => {
     setPicked(c);
     setVersion(c.card.po ? versionsFor(c.product, c.section, c.card)[0]?.id ?? 'base' : 'base');
@@ -173,15 +225,18 @@ export function Scan({ route }: { route: Route }) {
   const reset = () => {
     setPicked(null);
     setFound(null);
+    setOthers(null);
     setShot(null);
     setProblem('');
     setQuery('');
     cardRef.current = null;
+    textRef.current = '';
   };
 
   const confirm = () => {
     if (!picked) return;
     const copy = addCopy({ product: picked.product.id, section: picked.section.id, n: picked.card.n, version });
+    addBinder(picked.product.id);
     const key = cardKey(picked.product.id, picked.section.id, picked.card.n);
     if (cardRef.current) void savePhoto(copy.id, key, cardRef.current);
     const ownedNow = new Set(state.copies.filter((c) => c.product === picked.product.id && picked.product.sections.some((s) => s.kind === 'base' && s.id === c.section)).map((c) => cardKey(c.product, c.section, c.n)));
@@ -194,6 +249,7 @@ export function Scan({ route }: { route: Route }) {
   const closeTo = preferProduct ? href(['set', preferProduct.id]) : href([]);
   const results = query.trim() ? typed : found;
   const versions = picked ? versionsFor(picked.product, picked.section, picked.card) : [];
+  const canLook = !picked && !busy && (query.trim().length >= 3 || (found !== null && textRef.current.trim().length > 0));
 
   return (
     <div className="scan">
@@ -235,7 +291,11 @@ export function Scan({ route }: { route: Route }) {
             </div>
           ) : null}
           {camera === 'starting' ? <div className="viewfinder-note">Starting camera…</div> : null}
-          {busy ? <div className="viewfinder-busy">Reading the card…</div> : null}
+          {busy ? (
+            <div className="viewfinder-busy">
+              Reading the card… {pass}/{PASS_COUNT}
+            </div>
+          ) : null}
           {shot && !busy ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
         </div>
       )}
@@ -257,12 +317,13 @@ export function Scan({ route }: { route: Route }) {
               <div className="confirm-info">
                 <div className="display-m">{(picked.card.p || 'Card').toUpperCase()}</div>
                 <div className="sub">
-                  No. {picked.card.n} · {picked.card.t}
+                  No. {picked.card.n}
+                  {picked.card.t ? ` · ${picked.card.t}` : ''}
                   <br />
-                  {picked.product.season} {picked.product.brand} {picked.product.name}
+                  {[picked.product.season, picked.product.brand, picked.product.name].filter(Boolean).join(' ')}
                   {picked.section.id === 'base' ? '' : ` · ${picked.section.name}`}
                 </div>
-                <div className="price-m">{money(estimate(picked.product, picked.section, picked.card, version))}</div>
+                <div className="price-m">{priceText(picked.product, picked.section, picked.card, version)}</div>
               </div>
             </div>
             {versions.length > 0 ? (
@@ -326,16 +387,16 @@ export function Scan({ route }: { route: Route }) {
                     ) : null}
                   </div>
                 ) : null}
-                {camera === 'live' && !shot ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus.</p> : null}
+                {camera === 'live' && !shot ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus. Fancy lettering on the front? The back usually reads better.</p> : null}
               </>
             )}
 
             <label className="field">
-              <span className="field-label">{typeMode ? 'Player name or card number' : 'Or type the player name or number'}</span>
+              <span className="field-label">{typeMode ? 'Player or card name, or card number' : 'Or type the name or number'}</span>
               <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Ovechkin or 8" autoComplete="off" autoFocus={typeMode} />
             </label>
 
-            {problem && !query.trim() ? (
+            {problem ? (
               <p className="panel-note" role="status">
                 {problem}
               </p>
@@ -343,7 +404,7 @@ export function Scan({ route }: { route: Route }) {
 
             {results && results.length > 0 ? (
               <>
-                <div className="eyebrow">{query.trim() ? `${results.length} MATCHES` : 'WHICH CARD IS IT?'}</div>
+                <div className="eyebrow">{query.trim() ? `${results.length} MATCHES IN YOUR SETS` : 'WHICH CARD IS IT?'}</div>
                 <ul className="rows">
                   {results.map((c) => (
                     <CandidateRow key={cardKey(c.product.id, c.section.id, c.card.n)} c={c} owned={isOwned(c)} onPick={() => pick(c)} />
@@ -351,7 +412,47 @@ export function Scan({ route }: { route: Route }) {
                 </ul>
               </>
             ) : null}
-            {query.trim() && typed.length === 0 ? <p className="panel-note">Nothing matches that in the four sets.</p> : null}
+            {query.trim() && typed.length === 0 ? <p className="panel-note">Nothing matches in the sets on this device.</p> : null}
+
+            {canLook ? (
+              <div className="field">
+                <div className="field-label">Not listed? Find its set and add it</div>
+                <div className="chips" role="group" aria-label="Kind of card">
+                  {CATEGORIES.filter((c) => c.ready).map((c) => (
+                    <button key={c.id} type="button" className={c.id === category ? 'chip is-on' : 'chip'} onClick={() => void lookElsewhere(c.id)} disabled={looking}>
+                      {looking && c.id === category ? 'Looking…' : `${c.label} sets`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {others && others.length > 0 ? (
+              <>
+                <div className="eyebrow">FOUND IN THESE SETS</div>
+                <ul className="rows">
+                  {others.map((hit) => (
+                    <li key={hit.set.id + (hit.n ?? '')} className="row">
+                      <button type="button" className="row-main row-button" onClick={() => void useSet(hit)} disabled={fetching !== ''}>
+                        {hit.img ? (
+                          <span className="row-thumb">
+                            <img src={hit.img} alt="" loading="lazy" />
+                          </span>
+                        ) : null}
+                        <span className="row-name">
+                          {hit.cardName}{' '}
+                          <small>
+                            {[hit.set.season, hit.set.name].filter(Boolean).join(' ')}
+                            {hit.n ? ` · No. ${hit.n}` : ''}
+                          </small>
+                        </span>
+                        <span className="row-price">{fetching === hit.set.id ? 'Downloading…' : getProduct(hit.set.id) ? 'Use' : 'Add set'}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </>
         )}
       </div>

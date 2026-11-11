@@ -20,10 +20,14 @@ const PRODUCT_BASE: Record<string, number> = {
 /** Sections that are worth more than the set's ordinary base card. */
 const SECTION_BASE: Record<string, Record<string, number>> = {
   'allure-2025-26': { rookies: 2 },
-  'series-1-2025-26': { 'young-guns': 4 },
   'mvp-2026-27': { 'short-prints': 1, rookies: 0.75 },
-  'sp-authentic-2023-24': { 'future-watch': 8 },
 };
+/** The same, for any set that has a section by this name. */
+const SECTION_DEFAULT: Record<string, number> = { 'young-guns': 4, 'future-watch': 8, rookies: 2, 'short-prints': 1, 'secret-rares': 12 };
+/** Typical base card where the set is not listed above, by kind of card. */
+const CATEGORY_BASE: Record<string, number> = { hockey: 0.5, mtg: 0.25, pokemon: 0.4, baseball: 0.5 };
+/** Simple finishes that are neither numbered nor given pack odds. */
+const FINISH: Record<string, number> = { foil: 1.6, etched: 2, reverse: 1.5, holo: 2, 'first-edition': 4 };
 
 const STARS_TOP = [
   'connor mcdavid', 'connor bedard', 'sidney crosby', 'alex ovechkin', 'nathan mackinnon', 'auston matthews',
@@ -103,12 +107,15 @@ function findParallel(product: Product, section: Section, versionId: string): Pa
  * Returns null where a guess would be meaningless (one-of-one cards).
  */
 export function estimate(product: Product, section: Section, card: Card, versionId = 'base', condition: Condition = 'NM'): number | null {
+  const real = marketPrice(card, versionId);
+  if (real !== undefined) return Math.round(real * CONDITION[condition] * 100) / 100;
   if (card.sn === 1) return null;
-  const setBase = PRODUCT_BASE[product.id] ?? 0.5;
+  const setBase = PRODUCT_BASE[product.id] ?? CATEGORY_BASE[product.category] ?? 0.5;
 
   let value: number;
   if (section.kind === 'base') {
-    value = SECTION_BASE[product.id]?.[section.id] ?? setBase;
+    value = SECTION_BASE[product.id]?.[section.id] ?? SECTION_DEFAULT[section.id] ?? setBase;
+    if (card.sn) value = Math.max(value, setBase * serialMultiplier(card.sn));
     if (card.au) value *= 3;
   } else {
     value = setBase * (card.sn ? serialMultiplier(card.sn) : oddsMultiplier(section.odds));
@@ -122,13 +129,25 @@ export function estimate(product: Product, section: Section, card: Card, version
     const parallel = findParallel(product, section, versionId);
     if (parallel) {
       if (parallel.sn === 1) return null;
-      value *= parallel.sn ? serialMultiplier(parallel.sn) : oddsMultiplier(parallel.odds);
+      value *= parallel.sn ? serialMultiplier(parallel.sn) : FINISH[parallel.id] ?? oddsMultiplier(parallel.odds);
       if (parallel.au && !card.au) value = Math.max(value * 4, 12);
       if (parallel.mem && !card.mem) value = Math.max(value * 2, 8);
     }
   }
 
   return round(value * CONDITION[condition]);
+}
+
+/** A real market price from the data source, when the card has one for this version. */
+export function marketPrice(card: Card, versionId = 'base'): number | undefined {
+  return versionId === 'base' ? card.pr : card.vp?.[versionId];
+}
+
+/** The value as text: "$1.20" for a market price, "~$1.25" for an estimate. */
+export function priceText(product: Product, section: Section, card: Card, versionId = 'base', condition: Condition = 'NM'): string {
+  const value = estimate(product, section, card, versionId, condition);
+  if (value === null) return 'one of one';
+  return (marketPrice(card, versionId) !== undefined ? '$' : '~$') + value.toFixed(2);
 }
 
 /** Estimated value of a copy the user owns; 0 when it cannot be estimated. */

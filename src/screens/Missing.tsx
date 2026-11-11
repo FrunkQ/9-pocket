@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { BackButton, BottomBar, Screen, Tick } from '../components/Chrome';
-import { getProduct, productTitle } from '../data/catalog';
+import { productTitle, useProduct } from '../data/catalog';
 import { ebaySearchUrl } from '../lib/ebay';
-import { money, moneyTotal } from '../lib/estimate';
+import { moneyTotal, priceText } from '../lib/estimate';
 import { href, type Route } from '../lib/router';
 import { productStats, type MissingCard } from '../lib/stats';
 import { copiesByCard, useCollection } from '../lib/store';
-import { NotFound } from './NotFound';
+import { Loading, NotFound } from './NotFound';
 
 type Sort = 'number' | 'cheapest' | 'team';
 
@@ -22,8 +22,8 @@ export function Missing({ route }: { route: Route }) {
   const state = useCollection();
   const [sort, setSort] = useState<Sort>('number');
   const [shared, setShared] = useState('');
-  const product = getProduct(route.parts[1] ?? '');
-  if (!product) return <NotFound />;
+  const { product, status } = useProduct(route.parts[1] ?? '');
+  if (!product) return status === 'loading' ? <Loading /> : <NotFound />;
 
   const stats = productStats(product, copiesByCard(state), state.copies);
   const list = sorted(stats.missing, sort);
@@ -64,7 +64,7 @@ export function Missing({ route }: { route: Route }) {
         <div>
           <div className="eyebrow eyebrow-light">FINISH THE SET FOR ABOUT</div>
           <div className="display-xl">{stats.missing.length === 0 ? 'DONE' : moneyTotal(stats.toFinish)}</div>
-          <div className="hero-sub">{stats.missing.length === 0 ? 'Every base card is in the binder.' : `${breakdown}. Every price is an estimate.`}</div>
+          <div className="hero-sub">{stats.missing.length === 0 ? 'Every base card is in the binder.' : `${breakdown}. Prices marked ~ are estimates.`}</div>
         </div>
         {stats.missing.length > 0 ? (
           <button type="button" className="btn btn-light" onClick={() => void share()}>
@@ -101,7 +101,7 @@ export function Missing({ route }: { route: Route }) {
               <span className="row-name">
                 {card.p || 'Card'} <small>{card.t}</small>
               </span>
-              <span className="row-price">{price === null ? '' : money(price)}</span>
+              <span className="row-price">{price === null ? '' : priceText(product, section, card)}</span>
             </a>
             <a className="row-buy" href={ebaySearchUrl(state.settings.ebaySite, product, section, card)} target="_blank" rel="noreferrer" aria-label={`Find ${card.p} number ${card.n} on eBay`}>
               eBay

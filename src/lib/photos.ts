@@ -2,8 +2,8 @@
 // of the card. Pictures are too big for localStorage, so they live in the
 // browser's IndexedDB, with a small in-memory index for fast display.
 import { useSyncExternalStore } from 'react';
+import { dbRun } from './db';
 
-const DB_NAME = 'ninepocket';
 const STORE = 'photos';
 const FULL = { width: 500, height: 700, quality: 0.74 };
 const THUMB = { width: 200, height: 280, quality: 0.7 };
@@ -54,37 +54,7 @@ export function usePhotoVersion(): number {
   );
 }
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore(STORE, { keyPath: 'id' });
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    dbPromise.catch(() => {
-      dbPromise = null;
-    });
-  }
-  return dbPromise;
-}
-
-function run<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return openDb().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(STORE, mode);
-        const request = work(tx.objectStore(STORE));
-        tx.oncomplete = () => resolve(request.result);
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      }),
-  );
-}
+const run = <T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>) => dbRun<T>(STORE, mode, work);
 
 function index(record: PhotoRecord) {
   unindex(record.id);

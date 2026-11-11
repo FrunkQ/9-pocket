@@ -16,6 +16,36 @@ export interface Card {
   sn?: number;
   /** Exists only as parallels (no plain base version). */
   po?: 1;
+  /** Stock picture of the card (small and large), where the source provides one. */
+  img?: string;
+  imgL?: string;
+  /** A second line under the name, e.g. rarity and card type. */
+  sub?: string;
+  /** Market price in US dollars from the data source, when it gives one. */
+  pr?: number;
+  /** Market prices for other versions, by version id. */
+  vp?: Record<string, number>;
+}
+
+export type Category = 'hockey' | 'mtg' | 'pokemon' | 'baseball';
+
+export const CATEGORIES: { id: Category; label: string; ready: boolean }[] = [
+  { id: 'hockey', label: 'Hockey', ready: true },
+  { id: 'mtg', label: 'Magic', ready: true },
+  { id: 'pokemon', label: 'Pokémon', ready: true },
+  { id: 'baseball', label: 'Baseball', ready: false },
+];
+
+/** A set as it appears in a catalogue list, before its cards are downloaded. */
+export interface SetInfo {
+  id: string;
+  category: Category;
+  name: string;
+  brand: string;
+  /** Season or year, e.g. "2025-26" or "2024". Empty when the source has none. */
+  season: string;
+  count: number;
+  icon?: string;
 }
 
 export interface Parallel {
@@ -44,11 +74,13 @@ export interface Section {
 
 export interface Product {
   id: string;
+  category: Category;
   name: string;
   brand: string;
   season: string;
-  sport: string;
   source: string;
+  /** When this copy of the set was downloaded. */
+  fetched?: string;
   sections: Section[];
   parallels: Parallel[];
 }
@@ -76,11 +108,15 @@ export interface Settings {
   name: string;
   /** The rear camera chosen for scanning; empty lets the app choose. */
   cameraId: string;
+  /** The kind of card last browsed or scanned. */
+  category: Category;
 }
 
 export interface CollectionState {
   version: 1;
   copies: Copy[];
+  /** Sets the user has added, as binder ids, in the order added. */
+  binders: string[];
   settings: Settings;
 }
 

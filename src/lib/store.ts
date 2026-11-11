@@ -3,12 +3,13 @@
 // the way to keep it safe or move it.
 import { useSyncExternalStore } from 'react';
 import type { CollectionState, Condition, Copy, Protection, Settings } from '../types';
-import { cardKey } from '../data/catalog';
+import { cardKey, ensureProducts } from '../data/catalog';
+import { dbDelete } from './db';
 import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
 
 const STORAGE_KEY = 'ninepocket.v1';
 
-const EMPTY: CollectionState = { version: 1, copies: [], settings: { ebaySite: 'www.ebay.com', name: '', cameraId: '' } };
+const EMPTY: CollectionState = { version: 1, copies: [], binders: [], settings: { ebaySite: 'www.ebay.com', name: '', cameraId: '', category: 'hockey' } };
 
 /** Photos of the user's own cards (friends' shared pictures are keyed "friend:..."). */
 export const isOwnPhoto = (key: string) => !key.startsWith('friend:');
@@ -26,7 +27,8 @@ function load(): CollectionState {
 function normalise(value: unknown): CollectionState {
   const v = (value ?? {}) as Partial<CollectionState>;
   const copies = Array.isArray(v.copies) ? v.copies.filter(isCopy) : [];
-  return { version: 1, copies, settings: { ...EMPTY.settings, ...(v.settings ?? {}) } };
+  const binders = Array.isArray(v.binders) ? v.binders.filter((b): b is string => typeof b === 'string') : [];
+  return { version: 1, copies, binders, settings: { ...EMPTY.settings, ...(v.settings ?? {}) } };
 }
 
 function isCopy(c: unknown): c is Copy {
@@ -104,6 +106,33 @@ export function removeCopy(id: string) {
   void deletePhoto(id);
 }
 
+/** Every set the user is collecting: the ones they added, plus any they hold cards from. */
+export function binderIds(s: CollectionState): string[] {
+  const ids = [...s.binders];
+  for (const c of s.copies) if (!ids.includes(c.product)) ids.push(c.product);
+  return ids;
+}
+
+export function addBinder(id: string) {
+  if (state.binders.includes(id)) return;
+  commit({ ...state, binders: [...state.binders, id] });
+}
+
+/** Takes a set off the home screen, along with any cards recorded in it. */
+export function removeBinder(id: string) {
+  const gone = state.copies.filter((c) => c.product === id);
+  commit({ ...state, binders: state.binders.filter((b) => b !== id), copies: state.copies.filter((c) => c.product !== id) });
+  for (const c of gone) void deletePhoto(c.id);
+}
+
+/** Wipes everything this app has stored on the device, then restarts it. */
+export async function eraseEverything() {
+  for (const key of Object.keys(localStorage)) if (key.startsWith('ninepocket.')) localStorage.removeItem(key);
+  await dbDelete();
+  window.location.hash = '';
+  window.location.reload();
+}
+
 export function updateSettings(patch: Partial<Settings>) {
   commit({ ...state, settings: { ...state.settings, ...patch } });
 }
@@ -147,10 +176,11 @@ export async function importBackup(json: string, mode: 'merge' | 'replace'): Pro
   } else {
     const have = new Set(state.copies.map((c) => c.id));
     const fresh = incoming.copies.filter((c) => !have.has(c.id));
-    commit({ ...state, copies: [...state.copies, ...fresh] });
+    commit({ ...state, copies: [...state.copies, ...fresh], binders: [...state.binders, ...incoming.binders.filter((b) => !state.binders.includes(b))] });
     added = fresh.length;
   }
   const ids = new Set(state.copies.map((c) => c.id));
   const photos = await importPhotos(incomingPhotos.filter((p) => ids.has(p.id)));
+  await ensureProducts(binderIds(state));
   return { added, total: state.copies.length, photos };
 }

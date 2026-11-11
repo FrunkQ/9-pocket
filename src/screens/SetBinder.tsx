@@ -1,34 +1,33 @@
 import { BackButton, BottomBar, Screen } from '../components/Chrome';
 import { CardFace, EmptyPocket } from '../components/CardFace';
-import { baseSections, cardKey, getProduct, insertSections, pagesOf } from '../data/catalog';
-import { copyValue, estimate, money, moneyTotal } from '../lib/estimate';
+import { baseSections, cardKey, categoryOf, insertSections, pagesOf, refreshProduct, useProduct } from '../data/catalog';
+import { copyValue, moneyTotal, priceText } from '../lib/estimate';
 import { photoFor, usePhotoVersion } from '../lib/photos';
 import { go, href, type Route } from '../lib/router';
 import { productStats } from '../lib/stats';
-import { copiesByCard, useCollection } from '../lib/store';
+import { addBinder, copiesByCard, removeBinder, useCollection } from '../lib/store';
 import type { Card, Copy, Product, Section } from '../types';
-import { NotFound } from './NotFound';
+import { Loading, NotFound } from './NotFound';
 
 function Pocket({ product, section, card, copies }: { product: Product; section: Section; card: Card; copies: Copy[] | undefined }) {
   const to = href(['card', product.id, section.id, card.n]);
   if (copies && copies.length > 0) {
-    const value = copies.reduce((sum, c) => sum + copyValue(c), 0);
+    const value = copies.length === 1 ? priceText(product, section, card, copies[0].version, copies[0].condition) : moneyTotal(copies.reduce((sum, c) => sum + copyValue(c), 0));
     return (
       <a className="pocket" href={to} aria-label={`${card.p}, number ${card.n}, owned`}>
         <CardFace card={card} photo={photoFor(cardKey(product.id, section.id, card.n))?.thumb} />
         <span className="pocket-foot">
-          <span>{money(value)}</span>
+          <span>{value}</span>
           <span className="dim">×{copies.length}</span>
         </span>
       </a>
     );
   }
-  const price = card.po ? null : estimate(product, section, card);
   return (
     <a className="pocket" href={to} aria-label={`${card.p}, number ${card.n}, missing`}>
       <EmptyPocket card={card} />
       <span className="pocket-foot pocket-foot-need">
-        <span>{price === null ? '' : money(price)}</span>
+        <span>{card.po ? '' : priceText(product, section, card)}</span>
         <span>need</span>
       </span>
     </a>
@@ -38,10 +37,20 @@ function Pocket({ product, section, card, copies }: { product: Product; section:
 export function SetBinder({ route }: { route: Route }) {
   const state = useCollection();
   usePhotoVersion();
-  const product = getProduct(route.parts[1] ?? '');
-  if (!product) return <NotFound />;
+  const id = route.parts[1] ?? '';
+  const { product, status } = useProduct(id);
+  if (!product) return status === 'loading' ? <Loading what="DOWNLOADING SET…" /> : <NotFound />;
 
   const byCard = copiesByCard(state);
+  const inBinders = state.binders.includes(id) || state.copies.some((c) => c.product === id);
+  const live = categoryOf(id) !== 'hockey';
+  const remove = () => {
+    const held = state.copies.filter((c) => c.product === id).length;
+    const ok = window.confirm(held ? `Remove ${product.name} and the ${held} cards recorded in it? This cannot be undone.` : `Remove ${product.name} from your binders?`);
+    if (!ok) return;
+    removeBinder(id);
+    go([]);
+  };
   const stats = productStats(product, byCard, state.copies);
   const bases = baseSections(product);
   const inserts = insertSections(product);
@@ -62,9 +71,9 @@ export function SetBinder({ route }: { route: Route }) {
         <div className="set-head-title">
           <BackButton to={href([])} label="Back to all binders" />
           <div>
-            <h1 className="display-l">{product.name.toUpperCase()}</h1>
+            <h1 className={product.name.length > 14 ? 'display-l is-longer' : product.name.length > 8 ? 'display-l is-long' : 'display-l'}>{product.name.toUpperCase()}</h1>
             <div className="sub">
-              {product.season} {product.brand} · Hockey
+              {[product.season, product.brand].filter(Boolean).join(' ')}
             </div>
           </div>
         </div>
@@ -133,6 +142,34 @@ export function SetBinder({ route }: { route: Route }) {
           );
         })}
       </div>
+
+      <details className="advanced">
+        <summary>About this set</summary>
+        <p className="panel-text">
+          Checklist from{' '}
+          <a href={product.source} target="_blank" rel="noreferrer">
+            {product.source.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
+          </a>
+          {product.fetched ? `, downloaded ${new Date(product.fetched).toLocaleDateString()}` : ''}.
+        </p>
+        <div className="row-buttons">
+          {inBinders ? null : (
+            <button type="button" className="btn btn-ink" onClick={() => addBinder(id)}>
+              Add to my binders
+            </button>
+          )}
+          {live ? (
+            <button type="button" className="btn" onClick={() => void refreshProduct(id)}>
+              Refresh cards and prices
+            </button>
+          ) : null}
+          {inBinders ? (
+            <button type="button" className="link-danger" onClick={remove}>
+              Remove this set
+            </button>
+          ) : null}
+        </div>
+      </details>
 
       <BottomBar
         left={{ label: 'BINDER', to: href(['set', product.id]), active: true }}

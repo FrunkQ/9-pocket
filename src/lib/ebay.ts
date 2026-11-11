@@ -11,8 +11,8 @@ export const EBAY_SITES = [
 
 function searchTerms(product: Product, section: Section, card: Card, versionId: string): string {
   const terms = [product.season, product.brand, product.name];
-  if (section.kind === 'insert') terms.push(section.name);
-  else if (section.id !== 'base') terms.push(section.name);
+  // Subset names help find a hockey card; for card games the number is enough.
+  if (product.category === 'hockey' && section.id !== 'base') terms.push(section.name);
   terms.push(card.p, `#${card.n}`);
   if (versionId !== 'base') terms.push(versionName(product, section, versionId).replace(/ \/\d+$/, ''));
   return terms.filter(Boolean).join(' ');
