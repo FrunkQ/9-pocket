@@ -9,7 +9,7 @@ import { photoCount, usePhotoVersion } from '../lib/photos';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isOwnPhoto, updateSettings, useCollection } from '../lib/store';
+import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isOwnPhoto, removeBinder, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Copy, type Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
@@ -169,6 +169,13 @@ export function Home() {
   const category = state.settings.category;
   const mine = all.filter((id) => categoryOf(id) === category);
   const label = CATEGORIES.find((c) => c.id === category)?.label ?? '';
+  const [removing, setRemoving] = useState(false);
+
+  const remove = (id: string, name: string) => {
+    const held = state.copies.filter((c) => c.product === id).length;
+    const ok = window.confirm(held ? `Remove ${name} and the ${held} ${held === 1 ? 'card' : 'cards'} recorded in it? This cannot be undone.` : `Remove ${name} from your sets?`);
+    if (ok) removeBinder(id);
+  };
 
   return (
     <Screen>
@@ -208,14 +215,22 @@ export function Home() {
           const product = getProduct(id);
           if (!product) {
             return (
-              <a key={id} className="binder-card binder-card-off" href={href(['set', id])}>
-                <div className="binder-card-sub">This set has not downloaded yet. Open it when you are online.</div>
-              </a>
+              <div key={id} className="binder-wrap">
+                <a className="binder-card binder-card-off" href={href(['set', id])}>
+                  <div className="binder-card-sub">This set has not downloaded yet. Open it when you are online.</div>
+                </a>
+                {removing ? (
+                  <button type="button" className="btn btn-remove" onClick={() => remove(id, 'this set')}>
+                    Remove this set
+                  </button>
+                ) : null}
+              </div>
             );
           }
           const stats = productStats(product, byCard, state.copies);
           return (
-            <a key={id} className="binder-card" href={href(['set', id])}>
+            <div key={id} className="binder-wrap">
+            <a className="binder-card" href={href(['set', id])}>
               <div className="binder-card-top">
                 <div>
                   <div className="display-m">{product.name.toUpperCase()}</div>
@@ -232,6 +247,12 @@ export function Home() {
                 <span className="dim">{stats.missing.length === 0 ? 'complete' : `${moneyTotal(stats.toFinish)} to finish`}</span>
               </div>
             </a>
+            {removing ? (
+              <button type="button" className="btn btn-remove" onClick={() => remove(id, product.name)}>
+                Remove {product.name}
+              </button>
+            ) : null}
+            </div>
           );
         })}
         <a className="binder-add" href={href(['add'], { c: category })}>
@@ -241,6 +262,12 @@ export function Home() {
       </div>
 
       <Install />
+
+      {mine.length > 0 ? (
+        <button type="button" className="link-plain" onClick={() => setRemoving((on) => !on)}>
+          {removing ? 'Done removing' : 'Remove a set'}
+        </button>
+      ) : null}
 
       <section className="panel" aria-labelledby="friends-title">
         <h2 id="friends-title" className="eyebrow">

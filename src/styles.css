@@ -1371,3 +1371,14 @@ input[type='text'] {
   align-items: center;
   color: var(--ink);
 }
+
+.binder-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.btn-remove {
+  border-color: #b01f15;
+  color: #b01f15;
+}

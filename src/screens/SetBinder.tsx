@@ -120,31 +120,8 @@ export function SetBinder({ route }: { route: Route }) {
         {section.name}: {sectionOwned} of {section.cards.length} in. Values marked ~ are estimates.
       </p>
 
-      <div className="pages">
-        {pages.map((cards, i) => {
-          const inPage = cards.filter((c) => byCard.has(cardKey(product.id, section.id, c.n))).length;
-          return (
-            <section key={i} className="page" aria-label={`Page ${i + 1}`}>
-              <div className="page-head">
-                <span>
-                  PAGE {i + 1} / {pages.length}
-                </span>
-                <span>
-                  {cards[0].n}–{cards[cards.length - 1].n} · {inPage} IN
-                </span>
-              </div>
-              <div className="page-grid">
-                {cards.map((card) => (
-                  <Pocket key={card.n} product={product} section={section} card={card} copies={byCard.get(cardKey(product.id, section.id, card.n))} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-
       <details className="advanced">
-        <summary>About this set</summary>
+        <summary>Set options: source, refresh, remove</summary>
         <p className="panel-text">
           Checklist from{' '}
           <a href={product.source} target="_blank" rel="noreferrer">
@@ -170,6 +147,29 @@ export function SetBinder({ route }: { route: Route }) {
           ) : null}
         </div>
       </details>
+
+      <div className="pages">
+        {pages.map((cards, i) => {
+          const inPage = cards.filter((c) => byCard.has(cardKey(product.id, section.id, c.n))).length;
+          return (
+            <section key={i} className="page" aria-label={`Page ${i + 1}`}>
+              <div className="page-head">
+                <span>
+                  PAGE {i + 1} / {pages.length}
+                </span>
+                <span>
+                  {cards[0].n}–{cards[cards.length - 1].n} · {inPage} IN
+                </span>
+              </div>
+              <div className="page-grid">
+                {cards.map((card) => (
+                  <Pocket key={card.n} product={product} section={section} card={card} copies={byCard.get(cardKey(product.id, section.id, card.n))} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
 
       <BottomBar
         left={{ label: 'BINDER', to: href(['set', product.id]), active: true }}
