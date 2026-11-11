@@ -110,6 +110,8 @@ export interface Settings {
   cameraId: string;
   /** The kind of card last browsed or scanned. */
   category: Category;
+  /** Currency values are shown in, e.g. "GBP". Everything is stored in US dollars. */
+  currency: string;
 }
 
 export interface CollectionState {

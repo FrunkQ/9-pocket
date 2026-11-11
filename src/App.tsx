@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useProductsReady } from './data/catalog';
+import { refreshRates, useCurrencyVersion } from './lib/currency';
 import { useRoute } from './lib/router';
 import { binderIds, useCollection } from './lib/store';
 import { AddSet } from './screens/AddSet';
@@ -16,6 +17,12 @@ export function App() {
   const route = useRoute();
   const state = useCollection();
   const ready = useProductsReady(binderIds(state));
+  // Values are redrawn when the display currency or its rates change.
+  useCurrencyVersion();
+  const currency = state.settings.currency;
+  useEffect(() => {
+    if (currency !== 'USD') void refreshRates();
+  }, [currency]);
   const [first, second, third] = route.parts;
   const path = route.parts.join('/');
 

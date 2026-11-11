@@ -8,6 +8,7 @@
 // prices are available. The UI marks every estimate with a "~".
 import type { Card, Condition, Copy, Parallel, Product, Section } from '../types';
 import { getCard, getProduct, getSection } from '../data/catalog';
+import { formatMoney } from './currency';
 
 /** Typical price of an ordinary base card in each set, in US dollars. */
 const PRODUCT_BASE: Record<string, number> = {
@@ -147,7 +148,7 @@ export function marketPrice(card: Card, versionId = 'base'): number | undefined 
 export function priceText(product: Product, section: Section, card: Card, versionId = 'base', condition: Condition = 'NM'): string {
   const value = estimate(product, section, card, versionId, condition);
   if (value === null) return 'one of one';
-  return (marketPrice(card, versionId) !== undefined ? '$' : '~$') + value.toFixed(2);
+  return (marketPrice(card, versionId) !== undefined ? '' : '~') + formatMoney(value);
 }
 
 /** Estimated value of a copy the user owns; 0 when it cannot be estimated. */
@@ -161,9 +162,9 @@ export function copyValue(copy: Copy): number {
 
 export function money(value: number | null): string {
   if (value === null) return 'one of one';
-  return `~$${value.toFixed(2)}`;
+  return `~${formatMoney(value)}`;
 }
 
 export function moneyTotal(value: number): string {
-  return `~$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `~${formatMoney(value)}`;
 }

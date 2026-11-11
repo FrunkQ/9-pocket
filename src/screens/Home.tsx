@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { baseSections, cardKey, categoryOf, getProduct, useCatalogVersion } from '../data/catalog';
 import { BottomBar, Screen } from '../components/Chrome';
+import { CURRENCIES, ratesNote } from '../lib/currency';
 import { EBAY_SITES } from '../lib/ebay';
 import { copyValue, moneyTotal } from '../lib/estimate';
 import { promptInstall, useInstall } from '../lib/install';
@@ -103,6 +104,17 @@ function Backup() {
           ))}
         </select>
       </label>
+      <label className="field field-inline">
+        <span className="field-label">Show values in</span>
+        <select value={state.settings.currency} onChange={(e) => updateSettings({ currency: e.target.value })}>
+          {CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.label} ({c.symbol})
+            </option>
+          ))}
+        </select>
+      </label>
+      {state.settings.currency !== 'USD' ? <p className="mono-note">Converted from US dollars using {ratesNote()}.</p> : null}
       <details className="advanced">
         <summary>Advanced</summary>
         <p className="panel-text">For testing. Removes every card, photo, downloaded set and friend from this device and starts the app fresh.</p>

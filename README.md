@@ -23,6 +23,7 @@ Sets are downloaded when first added and kept on the device, so only the sets a 
 - **Card photos**: the straightened scan is saved (compressed) with the copy and shown in the binder and on the card.
 - **Versions**: each copy records which parallel or finish it is, its condition and how it is protected.
 - **Values**: market prices where the source has them, otherwise an estimate marked with `~` (see `src/lib/estimate.ts`).
+- **Display currency**: values are worked out in US dollars and can be shown in Canadian dollars, pounds, euros or Australian dollars, using the European Central Bank's daily rates (via the Frankfurter API).
 - **eBay links** on every card: items for sale now, and recent sold prices.
 - **Compare with a friend**: send your collection as a link or a file (photos optional), open theirs, and see which cards each of you could give the other.
 - **Backup**: download the collection as a file, with or without the photos, and restore it later or on another device.

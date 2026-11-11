@@ -4,12 +4,13 @@
 import { useSyncExternalStore } from 'react';
 import type { CollectionState, Condition, Copy, Protection, Settings } from '../types';
 import { cardKey, ensureProducts } from '../data/catalog';
+import { setDisplayCurrency } from './currency';
 import { dbDelete } from './db';
 import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
 
 const STORAGE_KEY = 'ninepocket.v1';
 
-const EMPTY: CollectionState = { version: 1, copies: [], binders: [], settings: { ebaySite: 'www.ebay.com', name: '', cameraId: '', category: 'hockey' } };
+const EMPTY: CollectionState = { version: 1, copies: [], binders: [], settings: { ebaySite: 'www.ebay.com', name: '', cameraId: '', category: 'hockey', currency: 'USD' } };
 
 /** Photos of the user's own cards (friends' shared pictures are keyed "friend:..."). */
 export const isOwnPhoto = (key: string) => !key.startsWith('friend:');
@@ -37,11 +38,13 @@ function isCopy(c: unknown): c is Copy {
 }
 
 let state: CollectionState = load();
+setDisplayCurrency(state.settings.currency);
 let index: Map<string, Copy[]> | null = null;
 const listeners = new Set<() => void>();
 
 function commit(next: CollectionState) {
   state = next;
+  setDisplayCurrency(state.settings.currency);
   index = null;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
