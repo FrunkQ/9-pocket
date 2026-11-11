@@ -176,8 +176,19 @@ export function versionsFor(product: Product, section: Section, card: Card): Par
   });
 }
 
+/**
+ * A version the checklist does not list is stored as "other:" followed by
+ * whatever the collector calls it, e.g. "other:Blue".
+ */
+export const OTHER = 'other:';
+export const isOther = (versionId: string) => versionId.startsWith(OTHER);
+export const otherLabel = (versionId: string) => versionId.slice(OTHER.length);
+/** Keeps a typed label safe to store and to pack into a share link. */
+export const otherVersion = (label: string) => OTHER + label.replace(/[~,|]/g, ' ').replace(/\s+/g, ' ').slice(0, 40);
+
 export function versionName(product: Product, section: Section, versionId: string): string {
   if (versionId === 'base') return 'Base';
+  if (isOther(versionId)) return otherLabel(versionId).trim() || 'Other version';
   const pool = section.kind === 'base' ? product.parallels : section.parallels ?? [];
   const p = pool.find((x) => x.id === versionId);
   if (!p) return versionId;

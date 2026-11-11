@@ -1,11 +1,11 @@
 import { CardFace } from '../components/CardFace';
 import { Screen, Segmented, Tick } from '../components/Chrome';
-import { cardKey, getCard, getSection, useProduct, versionsFor } from '../data/catalog';
+import { cardKey, getCard, getSection, isOther, OTHER, otherLabel, otherVersion, useProduct, versionsFor } from '../data/catalog';
 import { ebaySearchUrl, ebaySoldUrl } from '../lib/ebay';
 import { copyValue, marketPrice, moneyTotal, priceText } from '../lib/estimate';
 import { photoFor, usePhotoVersion } from '../lib/photos';
 import { href, type Route } from '../lib/router';
-import { addCopy, copiesByCard, removeCopy, updateCopy, useCollection } from '../lib/store';
+import { addCopy, copiesByCard, namedVersions, removeCopy, updateCopy, useCollection } from '../lib/store';
 import { CONDITIONS, PROTECTIONS } from '../types';
 import { Loading, NotFound } from './NotFound';
 
@@ -92,7 +92,7 @@ export function CardDetail({ route }: { route: Route }) {
           </div>
           <label className="field">
             <span className="field-label">Version</span>
-            <select value={copy.version} onChange={(e) => updateCopy(copy.id, { version: e.target.value })}>
+            <select value={!isOther(copy.version) || namedVersions(state, product.id, copy.id).includes(otherLabel(copy.version).trim()) ? copy.version : OTHER} onChange={(e) => updateCopy(copy.id, { version: e.target.value })}>
               {card.po ? null : <option value="base">Base</option>}
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -100,8 +100,20 @@ export function CardDetail({ route }: { route: Route }) {
                   {v.sn ? ` /${v.sn}` : ''}
                 </option>
               ))}
+              {namedVersions(state, product.id, copy.id).map((name) => (
+                <option key={name} value={otherVersion(name)}>
+                  {name} (your name)
+                </option>
+              ))}
+              <option value={OTHER}>Other: name it yourself</option>
             </select>
           </label>
+          {isOther(copy.version) && !namedVersions(state, product.id, copy.id).includes(otherLabel(copy.version).trim()) ? (
+            <label className="field">
+              <span className="field-label">What is this version called?</span>
+              <input type="text" value={otherLabel(copy.version)} onChange={(e) => updateCopy(copy.id, { version: otherVersion(e.target.value) })} placeholder="e.g. Blue, Silver foil, /250" maxLength={40} autoComplete="off" />
+            </label>
+          ) : null}
           <Segmented label="Condition" value={copy.condition} options={CONDITIONS} onChange={(condition) => updateCopy(copy.id, { condition })} />
           <Segmented label="Protection" value={copy.protection} options={PROTECTIONS} onChange={(protection) => updateCopy(copy.id, { protection })} />
           <button type="button" className="link-danger" onClick={() => removeCopy(copy.id)}>
@@ -110,11 +122,11 @@ export function CardDetail({ route }: { route: Route }) {
         </section>
       ))}
 
-      {versions.length > 0 ? (
+      {card ? (
         <section className="versions" aria-labelledby="versions-title">
           <div className="versions-head">
             <h2 id="versions-title" className="eyebrow">
-              VERSIONS OF THIS CARD · {ownedVersions.size} OF {versions.length + (card.po ? 0 : 1)}
+              VERSIONS OF THIS CARD · {[...ownedVersions].filter((v) => !isOther(v)).length} OF {versions.length + (card.po ? 0 : 1)}
             </h2>
             <span className="mono-note">~ is an estimate</span>
           </div>
@@ -145,6 +157,31 @@ export function CardDetail({ route }: { route: Route }) {
                 </button>
               </li>
             ))}
+            {namedVersions(state, product.id).map((name) => (
+              <li key={name} className="row">
+                <div className="row-main">
+                  <Tick on={ownedVersions.has(otherVersion(name))} />
+                  <span className="row-name">
+                    {name} <small>your name</small>
+                  </span>
+                  <span className="row-price">{priceText(product, section, card, otherVersion(name))}</span>
+                </div>
+                <button type="button" className="row-buy" onClick={() => add(otherVersion(name))} aria-label={`Add a ${name} copy`}>
+                  Add
+                </button>
+              </li>
+            ))}
+            <li className="row">
+              <div className="row-main">
+                <Tick on={false} />
+                <span className="row-name">
+                  Other version <small>not on the checklist: name it yourself</small>
+                </span>
+              </div>
+              <button type="button" className="row-buy" onClick={() => add(OTHER)} aria-label="Add a copy in a version that is not listed">
+                Add
+              </button>
+            </li>
           </ul>
         </section>
       ) : null}

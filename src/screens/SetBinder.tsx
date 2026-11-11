@@ -121,8 +121,8 @@ export function SetBinder({ route }: { route: Route }) {
       </p>
 
       <div className="row-buttons">
-        <a className="btn" href={href(['set', product.id, 'quick'], { s: section.id })}>
-          Quick add by number
+        <a className="btn" href={href(['scan'], { mode: 'select', set: product.id, s: section.id })}>
+          Tap to add cards
         </a>
       </div>
 

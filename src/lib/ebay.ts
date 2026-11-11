@@ -1,7 +1,7 @@
 // Links out to eBay searches. No eBay account or API is involved: these are
 // ordinary search pages opened in a new tab.
 import type { Card, Product, Section } from '../types';
-import { versionName } from '../data/catalog';
+import { isOther, otherLabel, versionName } from '../data/catalog';
 
 export const EBAY_SITES = [
   { host: 'www.ebay.com', label: 'eBay US' },
@@ -14,7 +14,8 @@ function searchTerms(product: Product, section: Section, card: Card, versionId: 
   // Subset names help find a hockey card; for card games the number is enough.
   if (product.category === 'hockey' && section.id !== 'base') terms.push(section.name);
   terms.push(card.p, `#${card.n}`);
-  if (versionId !== 'base') terms.push(versionName(product, section, versionId).replace(/ \/\d+$/, ''));
+  if (isOther(versionId)) terms.push(otherLabel(versionId).trim());
+  else if (versionId !== 'base') terms.push(versionName(product, section, versionId).replace(/ \/\d+$/, ''));
   return terms.filter(Boolean).join(' ');
 }
 

@@ -3,7 +3,7 @@
 // the way to keep it safe or move it.
 import { useSyncExternalStore } from 'react';
 import type { CollectionState, Condition, Copy, Protection, Settings } from '../types';
-import { cardKey, ensureProducts } from '../data/catalog';
+import { cardKey, ensureProducts, isOther, otherLabel } from '../data/catalog';
 import { setDisplayCurrency } from './currency';
 import { dbDelete } from './db';
 import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
@@ -114,6 +114,20 @@ export function binderIds(s: CollectionState): string[] {
   const ids = [...s.binders];
   for (const c of s.copies) if (!ids.includes(c.product)) ids.push(c.product);
   return ids;
+}
+
+/**
+ * Version names the user has made up for a set ("Blue", "Silver foil"), so a
+ * name typed once is offered again for the set's other cards.
+ */
+export function namedVersions(s: CollectionState, productId: string, exceptCopyId?: string): string[] {
+  const names = new Set<string>();
+  for (const c of s.copies) {
+    if (c.product !== productId || c.id === exceptCopyId || !isOther(c.version)) continue;
+    const label = otherLabel(c.version).trim();
+    if (label) names.add(label);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 export function addBinder(id: string) {

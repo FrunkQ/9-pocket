@@ -7,7 +7,7 @@
 // one place so they can be tuned, or replaced card by card once real sold
 // prices are available. The UI marks every estimate with a "~".
 import type { Card, Condition, Copy, Parallel, Product, Section } from '../types';
-import { getCard, getProduct, getSection } from '../data/catalog';
+import { getCard, getProduct, getSection, isOther } from '../data/catalog';
 import { formatMoney } from './currency';
 
 /** Typical price of an ordinary base card in each set, in US dollars. */
@@ -108,6 +108,11 @@ function findParallel(product: Product, section: Section, versionId: string): Pa
  * Returns null where a guess would be meaningless (one-of-one cards).
  */
 export function estimate(product: Product, section: Section, card: Card, versionId = 'base', condition: Condition = 'NM'): number | null {
+  // A version the checklist does not list: guess at a few times the base card.
+  if (isOther(versionId)) {
+    const base = estimate(product, section, card, 'base', condition);
+    return base === null ? null : round(base * 3);
+  }
   const real = marketPrice(card, versionId);
   if (real !== undefined) return Math.round(real * CONDITION[condition] * 100) / 100;
   if (card.sn === 1) return null;
@@ -141,6 +146,7 @@ export function estimate(product: Product, section: Section, card: Card, version
 
 /** A real market price from the data source, when the card has one for this version. */
 export function marketPrice(card: Card, versionId = 'base'): number | undefined {
+  if (isOther(versionId)) return undefined;
   return versionId === 'base' ? card.pr : card.vp?.[versionId];
 }
 

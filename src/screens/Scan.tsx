@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardFace } from '../components/CardFace';
 import { Tick } from '../components/Chrome';
-import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, useCatalogVersion, versionsFor } from '../data/catalog';
+import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, isOther, OTHER, otherLabel, otherVersion, useCatalogVersion, versionsFor } from '../data/catalog';
 import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
 import { priceText } from '../lib/estimate';
 import { findSets, type SetHit } from '../lib/identify';
@@ -10,8 +10,9 @@ import { PASS_COUNT, readCard, toCanvas, warmUp } from '../lib/ocr';
 import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { straighten } from '../lib/straighten';
-import { addBinder, addCopy, copiesByCard, updateSettings, useCollection } from '../lib/store';
+import { addBinder, addCopy, copiesByCard, namedVersions, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Category } from '../types';
+import { ScanSelect } from './ScanSelect';
 
 type Camera = 'starting' | 'live' | 'blocked' | 'off';
 
@@ -53,7 +54,10 @@ export function Scan({ route }: { route: Route }) {
   const catalogVersion = useCatalogVersion();
   const prefer = route.query.get('set') ?? undefined;
   const preferProduct = prefer ? getProduct(prefer) : undefined;
-  const typeMode = route.query.get('mode') === 'type';
+  const mode = route.query.get('mode');
+  const selectMode = mode === 'select';
+  // Neither typing nor selecting uses the camera.
+  const typeMode = mode === 'type' || selectMode;
   const cameraId = state.settings.cameraId;
   const category: Category = prefer ? categoryOf(prefer) : state.settings.category;
 
@@ -344,6 +348,9 @@ export function Scan({ route }: { route: Route }) {
   const closeTo = preferProduct ? href(['set', preferProduct.id]) : href([]);
   const results = query.trim() ? typed : found;
   const versions = picked ? versionsFor(picked.product, picked.section, picked.card) : [];
+  // Names the user has already given to unlisted versions in this set.
+  const named = picked ? namedVersions(state, picked.product.id) : [];
+  const naming = isOther(version) && !named.includes(otherLabel(version).trim());
   const canLook = !picked && !busy && (query.trim().length >= 3 || (found !== null && textRef.current.trim().length > 0));
 
   return (
@@ -356,8 +363,11 @@ export function Scan({ route }: { route: Route }) {
           <a className={typeMode ? '' : 'is-on'} href={href(['scan'], { set: prefer })}>
             CAMERA
           </a>
-          <a className={typeMode ? 'is-on' : ''} href={href(['scan'], { set: prefer, mode: 'type' })}>
+          <a className={mode === 'type' ? 'is-on' : ''} href={href(['scan'], { set: prefer, mode: 'type' })}>
             TYPE
+          </a>
+          <a className={selectMode ? 'is-on' : ''} href={href(['scan'], { set: prefer, mode: 'select' })}>
+            SELECT
           </a>
         </div>
         <div className="scan-count">
@@ -411,7 +421,9 @@ export function Scan({ route }: { route: Route }) {
           </p>
         ) : null}
 
-        {picked ? (
+        {selectMode ? (
+          <ScanSelect setId={prefer} sectionId={route.query.get('s') ?? undefined} onChange={(delta) => setSession((n) => Math.max(0, n + delta))} />
+        ) : picked ? (
           <div className="confirm">
             <div className="confirm-head">
               <div className="confirm-art">
@@ -429,7 +441,7 @@ export function Scan({ route }: { route: Route }) {
                 <div className="price-m">{priceText(picked.product, picked.section, picked.card, version)}</div>
               </div>
             </div>
-            {versions.length > 0 ? (
+            {picked ? (
               <div className="field">
                 <div className="field-label">Which version is it?</div>
                 <div className="chips chips-scroll" role="group" aria-label="Version">
@@ -444,7 +456,16 @@ export function Scan({ route }: { route: Route }) {
                       {v.sn ? ` /${v.sn}` : ''}
                     </button>
                   ))}
+                  {named.map((name) => (
+                    <button key={name} type="button" className={version === otherVersion(name) ? 'chip is-on' : 'chip'} aria-pressed={version === otherVersion(name)} onClick={() => setVersion(otherVersion(name))}>
+                      {name}
+                    </button>
+                  ))}
+                  <button type="button" className={naming ? 'chip is-on' : 'chip'} aria-pressed={naming} onClick={() => setVersion(naming ? version : OTHER)}>
+                    Other
+                  </button>
                 </div>
+                {naming ? <input type="text" aria-label="What is this version called?" value={otherLabel(version)} onChange={(e) => setVersion(otherVersion(e.target.value))} placeholder="What is it called? e.g. Blue" maxLength={40} autoComplete="off" /> : null}
               </div>
             ) : null}
             <div className="row-buttons">

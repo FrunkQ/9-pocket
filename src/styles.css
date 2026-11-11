@@ -1356,3 +1356,18 @@ input[type='text'] {
   min-height: 44px;
   font-size: 14px;
 }
+
+.scan-modes a {
+  padding: 0 10px;
+}
+.select-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.link-as-row {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+}
