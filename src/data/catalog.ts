@@ -4,9 +4,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Card, Category, Parallel, Product, Section, SetInfo } from '../types';
 import { dbRun } from '../lib/db';
-import { categoryOf, PROVIDERS } from './providers';
+import { categoryOf, IMPORTED, isLive, PROVIDERS } from './providers';
 
-export { categoryOf };
+export { categoryOf, isLive };
 
 const loaded = new Map<string, Product>();
 const pending = new Map<string, Promise<Product | null>>();
@@ -41,6 +41,7 @@ export function loadedProducts(): Product[] {
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function download(id: string): Promise<Product | null> {
+  if (id.startsWith(IMPORTED)) return null; // Loaded from a file: there is nowhere to download it from.
   const product = await PROVIDERS[categoryOf(id)].load(id).catch(() => null);
   if (!product) return null;
   // Older files may lack the category.
@@ -62,7 +63,7 @@ export function ensureProduct(id: string): Promise<Product | null> {
       loaded.set(id, product);
       bump();
       const age = product.fetched ? Date.now() - Date.parse(product.fetched) : 0;
-      if (cached && categoryOf(id) !== 'hockey' && age > STALE_MS) void refreshProduct(id);
+      if (cached && isLive(id) && age > STALE_MS) void refreshProduct(id);
       return product;
     })();
     pending.set(id, job);
@@ -122,13 +123,41 @@ export function useProductsReady(ids: string[]): boolean {
   return done === key || ids.every((id) => loaded.has(id));
 }
 
+// ---- Sets loaded from checklist files -------------------------------------
+
+/** Every set the user has loaded from a file, straight from the device. */
+export async function importedProducts(): Promise<Product[]> {
+  const all = await dbRun<Product[]>('sets', 'readonly', (s) => s.getAll()).catch(() => [] as Product[]);
+  return all.filter((p) => p && typeof p.id === 'string' && p.id.startsWith(IMPORTED));
+}
+
+/** Keeps a set built from a file (or restored from a backup) and makes it available at once. */
+export async function saveImported(product: Product): Promise<void> {
+  await dbRun('sets', 'readwrite', (s) => s.put(product));
+  loaded.set(product.id, product);
+  lists.delete(product.category);
+  bump();
+}
+
+/** Forgets a loaded set altogether. */
+export async function deleteImported(id: string): Promise<void> {
+  if (!id.startsWith(IMPORTED)) return;
+  await dbRun('sets', 'readwrite', (s) => s.delete(id)).catch(() => undefined);
+  loaded.delete(id);
+  lists.delete(categoryOf(id));
+  bump();
+}
+
 const lists = new Map<Category, Promise<SetInfo[]>>();
 
-/** Every set available for a kind of card. */
+/** Every set available for a kind of card: the catalogue's, then any loaded from files. */
 export function listSets(category: Category): Promise<SetInfo[]> {
   let job = lists.get(category);
   if (!job) {
-    job = PROVIDERS[category].list();
+    job = Promise.all([PROVIDERS[category].list(), importedProducts()]).then(([catalogue, mine]) => [
+      ...mine.filter((p) => p.category === category).map((p) => ({ id: p.id, category, name: p.name, brand: p.brand, season: p.season, count: baseCount(p) })),
+      ...catalogue,
+    ]);
     lists.set(category, job);
     job.then(
       (sets) => {

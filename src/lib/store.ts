@@ -2,8 +2,8 @@
 // are in IndexedDB, see photos.ts); the backup download on the home screen is
 // the way to keep it safe or move it.
 import { useSyncExternalStore } from 'react';
-import type { CollectionState, Condition, Copy, Protection, Settings } from '../types';
-import { cardKey, ensureProducts, isOther, otherLabel } from '../data/catalog';
+import { CATEGORIES, type Category, type CollectionState, type Condition, type Copy, type Product, type Protection, type Settings } from '../types';
+import { cardKey, categoryOf, ensureProducts, importedProducts, isOther, otherLabel, saveImported } from '../data/catalog';
 import { setDisplayCurrency } from './currency';
 import { dbDelete } from './db';
 import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
@@ -96,7 +96,9 @@ export function addCopy(input: { product: string; section: string; n: string; ve
     protection: input.protection ?? 'none',
     added: new Date().toISOString(),
   };
-  commit({ ...state, copies: [...state.copies, copy] });
+  const kind = categoryOf(copy.product);
+  const uses = { ...state.settings.uses, [kind]: (state.settings.uses?.[kind] ?? 0) + 1 };
+  commit({ ...state, copies: [...state.copies, copy], settings: { ...state.settings, uses } });
   return copy;
 }
 
@@ -154,6 +156,43 @@ export function updateSettings(patch: Partial<Settings>) {
   commit({ ...state, settings: { ...state.settings, ...patch } });
 }
 
+// ---- Which tabs show, and which one the app opens on -------------------------
+
+/** A catalogue kind shows unless switched off; a files kind is hidden until switched on. */
+export const isKindShown = (settings: Settings, id: Category) => settings.kinds?.[id] ?? CATEGORIES.find((c) => c.id === id)?.source === 'catalogue';
+
+export function shownKinds(settings: Settings): Category[] {
+  const shown = CATEGORIES.filter((c) => isKindShown(settings, c.id)).map((c) => c.id);
+  return shown.length > 0 ? shown : ['hockey'];
+}
+
+/** Shows or hides a tab. The last tab showing cannot be hidden. */
+export function showKind(id: Category, on: boolean) {
+  const kinds = { ...state.settings.kinds, [id]: on };
+  const left = CATEGORIES.filter((c) => kinds[c.id] ?? c.source === 'catalogue');
+  if (left.length === 0) return;
+  const category = left.some((c) => c.id === state.settings.category) ? state.settings.category : left[0].id;
+  updateSettings({ kinds, category });
+}
+
+/** Counts a use of a kind of card: a set opened, a card added. */
+export function noteUse(id: Category) {
+  const uses = { ...state.settings.uses, [id]: (state.settings.uses?.[id] ?? 0) + 1 };
+  commit({ ...state, settings: { ...state.settings, uses } });
+}
+
+/** Turns to the tab used most. Called once when the app opens. */
+export function openOnFavourite() {
+  const shown = shownKinds(state.settings);
+  let best: Category | undefined;
+  for (const id of shown) {
+    const n = state.settings.uses?.[id] ?? 0;
+    if (n > 0 && (!best || n > (state.settings.uses?.[best] ?? 0))) best = id;
+  }
+  const category = best ?? (shown.includes(state.settings.category) ? state.settings.category : shown[0]);
+  if (category !== state.settings.category) updateSettings({ category });
+}
+
 // ---- Backup ---------------------------------------------------------
 
 export function saveFile(name: string, text: string) {
@@ -170,7 +209,9 @@ export function saveFile(name: string, text: string) {
 
 export async function exportBackup(includePhotos: boolean): Promise<string> {
   const photos = includePhotos ? await exportPhotos(isOwnPhoto) : undefined;
-  return JSON.stringify({ app: 'nine-pocket', exported: new Date().toISOString(), ...state, ...(photos ? { photos } : {}) }, null, includePhotos ? 0 : 2);
+  // Sets loaded from checklist files exist nowhere else, so they go in the backup too.
+  const sets = await importedProducts();
+  return JSON.stringify({ app: 'nine-pocket', exported: new Date().toISOString(), ...state, ...(sets.length ? { sets } : {}), ...(photos ? { photos } : {}) }, null, includePhotos || sets.length ? 0 : 2);
 }
 
 export async function downloadBackup(includePhotos: boolean) {
@@ -182,8 +223,11 @@ export async function downloadBackup(includePhotos: boolean) {
  * are not already present; "replace" swaps the whole collection.
  */
 export async function importBackup(json: string, mode: 'merge' | 'replace'): Promise<{ added: number; total: number; photos: number }> {
-  const parsed = JSON.parse(json) as { photos?: ExportedPhoto[] };
+  const parsed = JSON.parse(json) as { photos?: ExportedPhoto[]; sets?: Product[] };
   const incoming = normalise(parsed);
+  for (const set of Array.isArray(parsed.sets) ? parsed.sets : []) {
+    if (set && typeof set.id === 'string' && set.id.startsWith('imp-') && Array.isArray(set.sections) && Array.isArray(set.parallels)) await saveImported(set).catch(() => undefined);
+  }
   const incomingPhotos = Array.isArray(parsed.photos) ? parsed.photos.filter((p) => p && isOwnPhoto(String(p.key))) : [];
   let added: number;
   if (mode === 'replace') {

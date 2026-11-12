@@ -1,5 +1,5 @@
 import type { Card } from '../types';
-import { teamColors } from '../lib/teams';
+import { teamCode, teamColors, teamShort } from '../lib/teams';
 
 /** Last name (or the last word of the card's subject), for the name strip. */
 export function shortName(player: string): string {
@@ -30,7 +30,7 @@ export function CardFace({ card, size = 'pocket', photo }: { card: Card; size?: 
     );
   }
   const team = teamColors(card.t);
-  const code = card.t.split('/')[0] || '—';
+  const code = teamCode(card.t) || '—';
   return (
     <div className={`face face-${size}`}>
       <div className="face-art" style={{ background: team.bg, color: team.fg }}>
@@ -54,7 +54,7 @@ export function EmptyPocket({ card }: { card: Card }) {
       <span className="pocket-who">
         {shortName(card.p) || 'Card'}
         <br />
-        {card.t}
+        {teamShort(card.t)}
       </span>
     </div>
   );

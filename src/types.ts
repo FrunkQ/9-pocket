@@ -27,14 +27,24 @@ export interface Card {
   vp?: Record<string, number>;
 }
 
-export type Category = 'hockey' | 'mtg' | 'pokemon' | 'baseball';
+export type Category = 'hockey' | 'mtg' | 'pokemon' | 'baseball' | 'basketball' | 'football' | 'soccer' | 'other';
 
-export const CATEGORIES: { id: Category; label: string; ready: boolean }[] = [
-  { id: 'hockey', label: 'Hockey', ready: true },
-  { id: 'mtg', label: 'Magic', ready: true },
-  { id: 'pokemon', label: 'Pokémon', ready: true },
-  // Not shown anywhere until it has a source of checklists and is marked ready.
-  { id: 'baseball', label: 'Baseball', ready: false },
+/**
+ * The kinds of card, each a tab. A "catalogue" kind has a list of sets the
+ * app can download. A "files" kind has none the app is allowed to collect, so
+ * its sets come from checklist files the user downloads and loads (see
+ * lib/checklist-file.ts); its tab is hidden until the user loads a set of
+ * that kind or switches the tab on.
+ */
+export const CATEGORIES: { id: Category; label: string; source: 'catalogue' | 'files' }[] = [
+  { id: 'hockey', label: 'Hockey', source: 'catalogue' },
+  { id: 'mtg', label: 'Magic', source: 'catalogue' },
+  { id: 'pokemon', label: 'Pokémon', source: 'catalogue' },
+  { id: 'baseball', label: 'Baseball', source: 'files' },
+  { id: 'basketball', label: 'Basketball', source: 'files' },
+  { id: 'football', label: 'Football', source: 'files' },
+  { id: 'soccer', label: 'Soccer', source: 'files' },
+  { id: 'other', label: 'Other', source: 'files' },
 ];
 
 /** A set as it appears in a catalogue list, before its cards are downloaded. */
@@ -113,6 +123,10 @@ export interface Settings {
   category: Category;
   /** Currency values are shown in, e.g. "GBP". Everything is stored in US dollars. */
   currency: string;
+  /** Tabs the user has switched on or off. A kind not listed follows its default. */
+  kinds?: Partial<Record<Category, boolean>>;
+  /** How often each kind has been used, to open the app on the favourite. */
+  uses?: Partial<Record<Category, number>>;
 }
 
 export interface CollectionState {

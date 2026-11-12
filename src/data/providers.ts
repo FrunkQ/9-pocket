@@ -198,10 +198,24 @@ const pokemon: Provider = {
 
 const none: Provider = { list: async () => [], load: async () => null };
 
-export const PROVIDERS: Record<Category, Provider> = { hockey, mtg, pokemon, baseball: none };
+// Kinds with no catalogue are filled from files the user loads; those sets
+// are kept on the device and added to every kind's list in catalog.ts.
+export const PROVIDERS: Record<Category, Provider> = { hockey, mtg, pokemon, baseball: none, basketball: none, football: none, soccer: none, other: none };
+
+/** Ids of sets loaded from a checklist file start with this, then the kind: "imp-basketball-...". */
+export const IMPORTED = 'imp-';
+
+const KINDS: Category[] = ['hockey', 'mtg', 'pokemon', 'baseball', 'basketball', 'football', 'soccer', 'other'];
 
 export function categoryOf(id: string): Category {
+  if (id.startsWith(IMPORTED)) {
+    const kind = id.split('-')[1] as Category;
+    return KINDS.includes(kind) ? kind : 'other';
+  }
   if (id.startsWith('mtg-')) return 'mtg';
   if (id.startsWith('pkm-')) return 'pokemon';
   return 'hockey';
 }
+
+/** Sets from a live source carry prices and pictures worth refreshing. */
+export const isLive = (id: string) => !id.startsWith(IMPORTED) && categoryOf(id) !== 'hockey';

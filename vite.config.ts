@@ -19,7 +19,9 @@ function serviceWorker(): Plugin {
     name: 'nine-pocket-service-worker',
     apply: 'build',
     generateBundle(_options, bundle) {
-      const built = Object.keys(bundle).filter((file) => !file.endsWith('.map'));
+      // The PDF reader (over a megabyte) is only needed to load a checklist
+      // file, so it is left out of the install and stored when first used.
+      const built = Object.keys(bundle).filter((file) => !file.endsWith('.map') && !/pdf/i.test(file));
       const files = [...new Set(['./', 'index.html', ...STATIC, ...built])];
       const version = createHash('sha1').update(files.join('|')).digest('hex').slice(0, 10);
       const source = readFileSync('sw/sw.js', 'utf8').replace("'__VERSION__'", `'${version}'`).replace("'__FILES__'", JSON.stringify(files));

@@ -12,10 +12,24 @@ Add a set, and every card in it appears as an empty pocket on a 9-pocket binder 
 | Magic | every paper set | [Scryfall](https://scryfall.com/docs/api), fetched on demand | yes | market prices |
 | Pokémon | every English set | [TCGdex](https://tcgdex.dev), fetched on demand | yes | estimates |
 
+| Baseball, Basketball, Football, Soccer, Other | whatever you load | checklist files you download yourself (see below) | your own scans | estimates |
+
 Sets are downloaded when first added and kept on the device, so only the sets a person collects take up space.
+
+### Sets from checklist files
+
+Topps and other makers publish their checklists for collectors but do not license them to apps, and their sites turn automated readers away. So for those sets the user fetches the list and the app reads it: "Add a set", then "Load a checklist file".
+
+- The screen links to Topps' "Checklist Spotlight" articles and explains the steps.
+- A Topps checklist PDF is read as it is: headings become the base set, its versions and the insert sets, and each line gives a card's number, name, team and rookie marker.
+- A list printed in an article can be copied and pasted in, or saved as a .csv or .txt file: one card per line, number first.
+- The set is kept on the device and included in backups. It is never added to this repository or sent anywhere.
+
+Each of these kinds of card is a tab that stays hidden until a set of that kind is loaded.
 
 ## What it does
 
+- **Your tabs**: "Card types" on the home screen switches tabs on and off, so a collector sees only the kinds of card they collect. The app opens on the tab used most.
 - **Add a set** from the list, or scan a card and let the app find which set it is from. When a card prints its own set or subset (hockey backs say "2025-26 SP HOCKEY"; fronts often name the subset, "Rookie Authentics") and that set is not in your binders, the app offers it above the other matches, even if the player was found in a set you do have. The version printed on the back ("BLUE") is selected for you. Matching itself only looks in sets already downloaded to the device, so when a scan matches nothing there, the app lists the sets that card is in, ready to add.
 - **Scan a card** with the phone camera. The app finds the card's edges, straightens it, reads the text on it in the browser and offers the closest matches to confirm. A photo upload and typed search do the same job without a camera. Typed search takes a name, a card number ("MVP-6", "MVP 6" and "MVP6" all work) or a subset ("stickers").
 - **Which card of that player**: the reader finds the name but cannot tell a base card from a sticker or an insert, so the confirm step lists the player's other cards in the set to switch to in one tap. Matches from sets in your binders come first; matches from other sets are greyed out below.
@@ -28,7 +42,7 @@ Sets are downloaded when first added and kept on the device, so only the sets a 
 - **Display currency**: values are worked out in US dollars and can be shown in Canadian dollars, pounds, euros or Australian dollars, using the European Central Bank's daily rates (via the Frankfurter API).
 - **eBay links** on every card: items for sale now, and recent sold prices.
 - **Compare with a friend**: send your collection as a link or a file (photos optional), open theirs, and see which cards each of you could give the other.
-- **Backup**: download the collection as a file, with or without the photos, and restore it later or on another device.
+- **Backup**: download the collection as a file, with or without the photos, and restore it later or on another device. Sets loaded from checklist files are in the backup too.
 
 ### Install and offline
 
@@ -94,7 +108,7 @@ rebuilds the catalogue from them. `node scripts/inspect-checklist.mjs data/raw/u
 
 ## Adding another kind of card
 
-A kind of card is a provider in `src/data/providers.ts` with two functions: list the sets, and load one set as a `Product`. Add it there, add it to `CATEGORIES` in `src/types.ts`, and teach `src/lib/identify.ts` how to find a card's set from text.
+A kind of card is an entry in `CATEGORIES` in `src/types.ts`. With `source: 'files'` that is all it needs: its sets come from checklist files (`src/lib/checklist-file.ts`). With `source: 'catalogue'` it also needs a provider in `src/data/providers.ts` with two functions (list the sets, and load one set as a `Product`), and `src/lib/identify.ts` taught how to find a card's set from text.
 
 ## Known limits
 
@@ -102,6 +116,8 @@ A kind of card is a provider in `src/data/providers.ts` with two functions: list
 - Hockey has no stock card images. A card shows your own scan once you have one, and a plain team-coloured face until then.
 - Straightening needs the whole card in the picture with a little of the table showing all round. It finds the card by learning the background's colours from the rim of the picture, so the card can be small, off-centre or tilted, and the background can be textured (carpet). When the card runs off the picture it says so and crops to the frame instead. A card with a border the same colour as the surface it lies on (white on white) may be cropped to the picture inside its border.
 - Estimated values come from a simple formula, not sale prices.
+- A checklist file has to be text with one card per line. A PDF made of scanned pictures cannot be read, and a file laid out very differently from Topps' may need tidying first.
+- "Find its set" from a scan only covers Hockey, Magic and Pokémon. A set loaded from a file has to be loaded before its cards can be matched.
 - The first scan downloads the text reader (a few megabytes) and needs a connection. Adding a set needs a connection too.
 
 ## Licence

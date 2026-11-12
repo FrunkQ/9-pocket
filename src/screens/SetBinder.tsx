@@ -1,11 +1,12 @@
 import { BackButton, BottomBar, Screen } from '../components/Chrome';
 import { CardFace, EmptyPocket } from '../components/CardFace';
-import { baseSections, cardKey, categoryOf, insertSections, pagesOf, refreshProduct, useProduct } from '../data/catalog';
+import { useEffect } from 'react';
+import { baseSections, cardKey, insertSections, isLive, pagesOf, refreshProduct, useProduct } from '../data/catalog';
 import { copyValue, moneyTotal, priceText } from '../lib/estimate';
 import { photoFor, usePhotoVersion } from '../lib/photos';
 import { go, href, type Route } from '../lib/router';
 import { productStats } from '../lib/stats';
-import { addBinder, copiesByCard, removeBinder, useCollection } from '../lib/store';
+import { addBinder, copiesByCard, noteUse, removeBinder, useCollection } from '../lib/store';
 import type { Card, Copy, Product, Section } from '../types';
 import { Loading, NotFound } from './NotFound';
 
@@ -39,11 +40,16 @@ export function SetBinder({ route }: { route: Route }) {
   usePhotoVersion();
   const id = route.parts[1] ?? '';
   const { product, status } = useProduct(id);
+  // Opening a set counts towards which tab the app opens on.
+  const kind = product?.category;
+  useEffect(() => {
+    if (kind) noteUse(kind);
+  }, [id, kind]);
   if (!product) return status === 'loading' ? <Loading what="DOWNLOADING SET…" /> : <NotFound />;
 
   const byCard = copiesByCard(state);
   const inBinders = state.binders.includes(id) || state.copies.some((c) => c.product === id);
-  const live = categoryOf(id) !== 'hockey';
+  const live = isLive(id);
   const remove = () => {
     const held = state.copies.filter((c) => c.product === id).length;
     const ok = window.confirm(held ? `Remove ${product.name} and the ${held} cards recorded in it? This cannot be undone.` : `Remove ${product.name} from your binders?`);
@@ -122,13 +128,20 @@ export function SetBinder({ route }: { route: Route }) {
 
       <details className="advanced">
         <summary>Set options: source, refresh, remove</summary>
-        <p className="panel-text">
-          Checklist from{' '}
-          <a href={product.source} target="_blank" rel="noreferrer">
-            {product.source.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
-          </a>
-          {product.fetched ? `, downloaded ${new Date(product.fetched).toLocaleDateString()}` : ''}.
-        </p>
+        {product.source.startsWith('file:') ? (
+          <p className="panel-text">
+            Loaded from your file {product.source.slice(5)}
+            {product.fetched ? ` on ${new Date(product.fetched).toLocaleDateString()}` : ''}. It is kept on this device and in your backups.
+          </p>
+        ) : (
+          <p className="panel-text">
+            Checklist from{' '}
+            <a href={product.source} target="_blank" rel="noreferrer">
+              {product.source.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
+            </a>
+            {product.fetched ? `, downloaded ${new Date(product.fetched).toLocaleDateString()}` : ''}.
+          </p>
+        )}
         <div className="row-buttons">
           {inBinders ? null : (
             <button type="button" className="btn btn-ink" onClick={() => addBinder(id)}>

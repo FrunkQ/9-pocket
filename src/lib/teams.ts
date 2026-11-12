@@ -49,6 +49,28 @@ export const TEAMS: Record<string, Team> = {
 
 const FALLBACK: Team = { bg: '#4A5055', fg: LIGHT, words: [] };
 
+/**
+ * A few letters for the big type on a card face. Hockey teams are stored as
+ * abbreviations already; sets loaded from files carry full names, which are
+ * cut to initials ("Los Angeles Lakers" -> "LAL").
+ */
+export function teamCode(team: string): string {
+  const first = team.split('/')[0].trim();
+  if (first.length <= 4) return first;
+  return first
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 4);
+}
+
+/** A short name for a small space: an abbreviation as it is, a full name as its last word ("Lakers"). */
+export function teamShort(team: string): string {
+  const first = team.split('/')[0].trim();
+  return first.length <= 5 ? team : first.split(/\s+/).pop() ?? first;
+}
+
 /** Colours for a team abbreviation; two-team cards use the first team. */
 export function teamColors(abbr: string): Team {
   return TEAMS[abbr.split('/')[0]] ?? FALLBACK;

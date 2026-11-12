@@ -826,7 +826,7 @@ export function Scan({ route }: { route: Route }) {
               <div className="field">
                 <div className="field-label">Not listed? Find its set and add it</div>
                 <div className="chips" role="group" aria-label="Kind of card">
-                  {CATEGORIES.filter((c) => c.ready).map((c) => (
+                  {CATEGORIES.filter((c) => c.source === 'catalogue').map((c) => (
                     <button key={c.id} type="button" className={c.id === category ? 'chip is-on' : 'chip'} onClick={() => void lookElsewhere(c.id)} disabled={looking}>
                       {looking && c.id === category ? 'Looking…' : `${c.label} sets`}
                     </button>

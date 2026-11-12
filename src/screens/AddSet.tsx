@@ -3,7 +3,7 @@ import { BackButton, Screen, Tick } from '../components/Chrome';
 import { ensureProduct, listSets } from '../data/catalog';
 import { fold } from '../lib/match';
 import { go, href, type Route } from '../lib/router';
-import { addBinder, binderIds, updateSettings, useCollection } from '../lib/store';
+import { addBinder, binderIds, shownKinds, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Category, type SetInfo } from '../types';
 
 const SHOWN = 120;
@@ -12,7 +12,11 @@ const SHOWN = 120;
 export function AddSet({ route }: { route: Route }) {
   const state = useCollection();
   const wanted = route.query.get('c') as Category | null;
-  const category = CATEGORIES.find((c) => c.id === wanted && c.ready)?.id ?? state.settings.category;
+  const category = CATEGORIES.find((c) => c.id === wanted)?.id ?? state.settings.category;
+  // A kind with no catalogue is filled from checklist files the user loads.
+  const fromFiles = CATEGORIES.find((c) => c.id === category)?.source === 'files';
+  const canLoad = category !== 'mtg' && category !== 'pokemon';
+  const tabs = CATEGORIES.filter((c) => c.id === category || shownKinds(state.settings).includes(c.id));
   const [sets, setSets] = useState<SetInfo[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState('');
@@ -28,7 +32,7 @@ export function AddSet({ route }: { route: Route }) {
       (list) => {
         if (!live) return;
         setSets(list);
-        setFailed(list.length === 0);
+        setFailed(list.length === 0 && !fromFiles);
       },
       () => live && setFailed(true),
     );
@@ -74,16 +78,16 @@ export function AddSet({ route }: { route: Route }) {
           <BackButton to={href([])} label="Back to binders" />
           <div>
             <h1 className="display-l">ADD A SET</h1>
-            <div className="sub">{sets ? `${sets.length} ${label} sets` : `${label} sets`}</div>
+            <div className="sub">{sets ? `${sets.length} ${label} ${sets.length === 1 ? 'set' : 'sets'}` : `${label} sets`}</div>
           </div>
         </div>
       </header>
 
       <div className="sports" role="group" aria-label="Card type">
-        {CATEGORIES.filter((c) => c.ready).map((c) => (
-          <a key={c.id} className={c.id === category ? 'is-on' : c.ready ? '' : 'is-off'} aria-current={c.id === category} href={c.ready ? href(['add'], { c: c.id }) : undefined}>
+        {tabs.map((c) => (
+          <a key={c.id} className={c.id === category ? 'is-on' : ''} aria-current={c.id === category} href={href(['add'], { c: c.id })}>
             <span>{c.label}</span>
-            <small>{c.ready ? 'browse' : 'later'}</small>
+            <small>{c.source === 'files' ? 'your files' : 'browse'}</small>
           </a>
         ))}
       </div>
@@ -100,7 +104,19 @@ export function AddSet({ route }: { route: Route }) {
       ) : null}
       {!sets && !failed ? <p className="mono-note">Loading the list…</p> : null}
       {failed ? <p className="panel-note">The list of sets could not be loaded. Check your connection.</p> : null}
-      {sets && !failed && matches.length === 0 ? <p className="panel-note">No set matches that.</p> : null}
+      {sets && !failed && sets.length > 0 && matches.length === 0 ? <p className="panel-note">No set matches that.</p> : null}
+      {sets && fromFiles && sets.length === 0 ? (
+        <>
+          <p className="panel-note">
+            There is no {label} list the app is allowed to collect, so {label} sets come from checklist files you download yourself. None are on this device yet.
+          </p>
+          <div className="row-buttons">
+            <a className="btn btn-red btn-big" href={href(['import'], { c: category })}>
+              LOAD A CHECKLIST FILE
+            </a>
+          </div>
+        </>
+      ) : null}
 
       <ul className="rows">
         {matches.slice(0, SHOWN).map((s) => (
@@ -110,7 +126,7 @@ export function AddSet({ route }: { route: Route }) {
               <span className="row-name">
                 {s.name}{' '}
                 <small>
-                  {[s.season, s.brand].filter(Boolean).join(' ')} · {s.count} cards
+                  {[s.season, s.brand].filter(Boolean).join(' ')} · {s.count} cards{s.id.startsWith('imp-') ? ' · from your file' : ''}
                 </small>
               </span>
               <span className="row-price">{adding === s.id ? 'Downloading…' : have.has(s.id) ? 'Open' : 'Add'}</span>
@@ -119,7 +135,12 @@ export function AddSet({ route }: { route: Route }) {
         ))}
       </ul>
       {matches.length > SHOWN ? <p className="mono-note">Showing the first {SHOWN}. Type part of the name to narrow it down.</p> : null}
-      <p className="mono-note legend">You can also just scan a card: if its set is not on this device yet, the scan screen offers to add it.</p>
+      {canLoad && !(fromFiles && sets && sets.length === 0) ? (
+        <a className="link-plain" href={href(['import'], { c: category })}>
+          Set not listed? Load a checklist file you have downloaded
+        </a>
+      ) : null}
+      {fromFiles ? null : <p className="mono-note legend">You can also just scan a card: if its set is not on this device yet, the scan screen offers to add it.</p>}
     </Screen>
   );
 }

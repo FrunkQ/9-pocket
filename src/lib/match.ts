@@ -67,7 +67,8 @@ function index(): Entry[] {
         const code = /^\d+$/.test(squashed) ? '' : squashed;
         const codeLetters = /^[a-z]+(?=\d)/.exec(code)?.[0] ?? '';
         const nameTokens = fold(card.p).split(' ').filter((t) => t.length >= 2);
-        const teamWords = card.t.split('/').flatMap((t) => TEAMS[t]?.words ?? []);
+        // Hockey teams are abbreviations with known words; a full team name supplies its own.
+        const teamWords = card.t.split('/').flatMap((t) => TEAMS[t]?.words ?? fold(t).split(' ').filter((w) => w.length >= 4));
         entries.push({ product, section, card, nameTokens, teamWords, setWords, sectionWords, sectionSearch, code, codeLetters });
       }
     }
@@ -160,7 +161,8 @@ export class Reading {
 }
 
 function nameScore(e: Entry, reading: Reading): number {
-  return nameAgreement(e.nameTokens, e.product.category === 'hockey' || e.product.category === 'baseball', reading);
+  // Every kind but the two card games is named after people.
+  return nameAgreement(e.nameTokens, e.product.category !== 'mtg' && e.product.category !== 'pokemon', reading);
 }
 
 /** Name agreement, 0 to 1. People's names lean on the surname; other names weigh every word. */

@@ -9,7 +9,7 @@ import { photoCount, usePhotoVersion } from '../lib/photos';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isOwnPhoto, removeBinder, updateSettings, useCollection } from '../lib/store';
+import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isKindShown, isOwnPhoto, removeBinder, showKind, shownKinds, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Copy, type Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
@@ -166,7 +166,9 @@ export function Home() {
   const byCard = copiesByCard(state);
   const total = state.copies.reduce((sum, c) => sum + copyValue(c), 0);
   const all = binderIds(state);
-  const category = state.settings.category;
+  const shown = shownKinds(state.settings);
+  const category = shown.includes(state.settings.category) ? state.settings.category : shown[0];
+  const fromFiles = CATEGORIES.find((c) => c.id === category)?.source === 'files';
   const mine = all.filter((id) => categoryOf(id) === category);
   const label = CATEGORIES.find((c) => c.id === category)?.label ?? '';
   const [removing, setRemoving] = useState(false);
@@ -197,12 +199,14 @@ export function Home() {
       </div>
 
       <div className="sports" role="group" aria-label="Card type">
-        {CATEGORIES.filter((c) => c.ready).map((c) => {
+        {CATEGORIES.filter((c) => shown.includes(c.id)).map((c) => {
           const n = all.filter((id) => categoryOf(id) === c.id).length;
           return (
-            <button key={c.id} type="button" className={c.id === category ? 'is-on' : ''} aria-pressed={c.id === category} disabled={!c.ready} onClick={() => updateSettings({ category: c.id })}>
+            <button key={c.id} type="button" className={c.id === category ? 'is-on' : ''} aria-pressed={c.id === category} onClick={() => updateSettings({ category: c.id })}>
               <span>{c.label}</span>
-              <small>{c.ready ? `${n} ${n === 1 ? 'set' : 'sets'}` : 'later'}</small>
+              <small>
+                {n} {n === 1 ? 'set' : 'sets'}
+              </small>
             </button>
           );
         })}
@@ -257,7 +261,13 @@ export function Home() {
         })}
         <a className="binder-add" href={href(['add'], { c: category })}>
           <span className="display-m">ADD A SET</span>
-          <span>{mine.length === 0 ? `No ${label} sets yet. Pick one from the list, or scan a card and the app will find its set.` : `Browse every ${label} set`}</span>
+          <span>
+            {fromFiles
+              ? `${label} sets come from checklist files you download. Load one here.`
+              : mine.length === 0
+                ? `No ${label} sets yet. Pick one from the list, or scan a card and the app will find its set.`
+                : `Browse every ${label} set`}
+          </span>
         </a>
       </div>
 
@@ -280,6 +290,22 @@ export function Home() {
           </a>
         </div>
       </section>
+
+      <details className="advanced">
+        <summary>Card types: choose which tabs show</summary>
+        <p className="panel-text">Switch off the kinds of card you do not collect. A tab that is off is only hidden: its sets and cards are kept. The app opens on the tab you use most.</p>
+        <div className="chips" role="group" aria-label="Card types shown">
+          {CATEGORIES.map((c) => {
+            const on = isKindShown(state.settings, c.id);
+            return (
+              <button key={c.id} type="button" className={on ? 'chip is-on' : 'chip'} aria-pressed={on} disabled={on && shown.length === 1} onClick={() => showKind(c.id, !on)}>
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mono-note">Baseball, Basketball, Football, Soccer and Other have no list the app is allowed to collect. Their sets come from checklist files you download and load under "Add a set".</p>
+      </details>
 
       <Backup />
 
