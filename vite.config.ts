@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
@@ -27,10 +28,28 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * What the home screen shows as the version: when this build was made and the
+ * commit it was made from, so a deploy can be checked at a glance.
+ */
+function buildLabel(): string {
+  let commit = process.env.WORKERS_CI_COMMIT_SHA ?? process.env.CF_PAGES_COMMIT_SHA ?? '';
+  if (!commit) {
+    try {
+      commit = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    } catch {
+      // Not a git checkout: the date alone will do.
+    }
+  }
+  const when = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  return when + ' UTC' + (commit ? ' · ' + commit.slice(0, 7) : '');
+}
+
 // `npm run dev:phone` serves over HTTPS on your local network so a phone's
 // browser will allow camera access (it refuses on plain http).
 export default defineConfig(({ mode }) => ({
   base: './',
+  define: { __BUILD__: JSON.stringify(buildLabel()) },
   plugins: [react(), serviceWorker(), ...(mode === 'phone' ? [basicSsl()] : [])],
   server: { port: 5173 },
 }));

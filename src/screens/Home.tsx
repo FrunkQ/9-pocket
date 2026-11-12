@@ -283,6 +283,8 @@ export function Home() {
 
       <Backup />
 
+      <p className="mono-note">Version {__BUILD__}</p>
+
       <BottomBar left={{ label: 'BINDERS', to: href([]), active: true }} right={{ label: 'SEARCH', to: href(['scan'], { mode: 'type' }) }} />
     </Screen>
   );

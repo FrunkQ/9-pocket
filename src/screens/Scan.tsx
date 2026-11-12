@@ -35,6 +35,12 @@ const MARGIN = 0.08;
 
 const where = (c: Candidate) => [c.card.t, [c.product.name, c.product.season].filter(Boolean).join(' '), c.section.id === 'base' ? '' : c.section.name].filter(Boolean).join(' · ');
 
+/** True when the text is the small print of a card's back (vitals, stats, copyright) rather than a front. */
+function looksLikeBack(text: string): boolean {
+  const signs = new Set((text.match(/\b(height|weight|shoots|catches|born|printed in|company|nhlpa|pts|pim)\b/gi) ?? []).map((w) => w.toLowerCase()));
+  return signs.size >= 2;
+}
+
 function CandidateRow({ c, owned, dim, onPick }: { c: Candidate; owned: boolean; dim?: boolean; onPick: () => void }) {
   return (
     <li className={dim ? 'row row-dim' : 'row'}>
@@ -69,6 +75,8 @@ export function Scan({ route }: { route: Route }) {
   const cardRef = useRef<HTMLCanvasElement | null>(null);
   const textRef = useRef('');
   const autoPicked = useRef(false);
+  // The first side of a card, kept while the other side is being shot.
+  const keptRef = useRef<{ canvas: HTMLCanvasElement; text: string; url: string; flat: boolean } | null>(null);
 
   const [camera, setCamera] = useState<Camera>(typeMode ? 'off' : 'starting');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
@@ -85,6 +93,10 @@ export function Scan({ route }: { route: Route }) {
   const [others, setOthers] = useState<SetHit[] | null>(null);
   // True when the list of other sets came from what the card itself prints, unasked.
   const [said, setSaid] = useState(false);
+  // A second shot of the same card: its back, read for the set but not kept
+  // as the picture; or its front, kept as the picture but not read.
+  const [side, setSide] = useState<'back' | 'front' | null>(null);
+  const [frontTaken, setFrontTaken] = useState(false);
   const [looking, setLooking] = useState(false);
   const [fetching, setFetching] = useState('');
   const [problem, setProblem] = useState('');
@@ -165,18 +177,42 @@ export function Scan({ route }: { route: Route }) {
     setOthers(null);
     setSaid(false);
     setAdded('');
+    // Reading the back of a card whose front is already held: the front stays the picture.
+    const kept = side === 'back' ? keptRef.current : null;
     try {
       const flat = straighten(source, 1000, margin);
-      cardRef.current = flat.canvas;
+      if (!kept) {
+        cardRef.current = flat.canvas;
+        setFrontTaken(false);
+      }
       setFlattened(flat.found);
       setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
       let best: Candidate[] = [];
-      // Read the card several ways, stopping as soon as one reading is convincing.
-      textRef.current = await readCard(flat.canvas, (text, n) => {
-        best = matchText(text, likely);
-        setPass(n + 1);
-        return isConfident(best);
-      });
+      if (kept) {
+        // A back is plain print. Read until its small print shows up, a few passes at most.
+        const back = await readCard(
+          flat.canvas,
+          (text, n) => {
+            best = matchText(kept.text + '\n' + text, likely);
+            setPass(n + 1);
+            return looksLikeBack(text) || n >= 3;
+          },
+          true,
+        );
+        textRef.current = kept.text + '\n' + back;
+        setShot(kept.url);
+        setFlattened(kept.flat);
+        keptRef.current = null;
+        setSide(null);
+        setFrontTaken(true);
+      } else {
+        // Read the card several ways, stopping as soon as one reading is convincing.
+        textRef.current = await readCard(flat.canvas, (text, n) => {
+          best = matchText(text, likely);
+          setPass(n + 1);
+          return isConfident(best);
+        });
+      }
       setFound(best);
       // Matching only looks in sets already on this device. So also ask which
       // sets the card could be from: always when nothing matched, and for hockey
@@ -184,8 +220,11 @@ export function Scan({ route }: { route: Route }) {
       // HOCKEY", "ROOKIE AUTHENTICS") may belong to a set that is not in the
       // binders even when the player was found in one that is.
       const lookUp = textRef.current.trim() !== '' && (best.length === 0 || category === 'hockey');
-      const hits = lookUp ? (await findSets(textRef.current, category)).filter((hit) => !have.has(hit.set.id)) : [];
-      const top = hits.find((hit) => hit.sure);
+      const all = lookUp ? await findSets(textRef.current, category) : [];
+      const hits = all.filter((hit) => !have.has(hit.set.id));
+      // The set the card names most clearly. If that one is already in the binders, there is nothing to offer.
+      const named = all.find((hit) => hit.sure);
+      const top = named && !have.has(named.set.id) ? named : undefined;
       if (top) {
         setSaid(true);
         setOthers(hits.filter((hit) => hit.sure && hit.score >= top.score - 0.3).slice(0, 3));
@@ -261,13 +300,50 @@ export function Scan({ route }: { route: Route }) {
     }
   };
 
+  /** Takes over the front of a card that was identified from its back: a picture only, nothing is read. */
+  const pictureOnly = (source: HTMLCanvasElement, margin: number) => {
+    const flat = straighten(source, 1000, margin);
+    cardRef.current = flat.canvas;
+    setFlattened(flat.found);
+    setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
+    keptRef.current = null;
+    setSide(null);
+    setFrontTaken(true);
+  };
+
+  /** Holds on to the side just scanned and opens the camera again for the other one. */
+  const otherSide = (next: 'back' | 'front') => {
+    if (!cardRef.current || !shot) return;
+    keptRef.current = { canvas: cardRef.current, text: textRef.current, url: shot, flat: flattened };
+    setSide(next);
+    setShot(null);
+    if (next === 'back') {
+      setFound(null);
+      setOthers(null);
+      setProblem('');
+    }
+  };
+
+  /** Gives up on the second shot and goes back to the first. */
+  const keepFirstSide = () => {
+    const kept = keptRef.current;
+    if (kept) {
+      setShot(kept.url);
+      setFlattened(kept.flat);
+    }
+    keptRef.current = null;
+    setSide(null);
+  };
+
   const capture = () => {
     const video = videoRef.current;
     const view = viewRef.current;
     const guide = guideRef.current;
     if (!video || !view || !guide || video.videoWidth === 0) return;
-    const rect = guideCrop(view.getBoundingClientRect(), guide.getBoundingClientRect(), video.videoWidth, video.videoHeight, zoom, grid > 1 ? 0.02 : MARGIN);
-    if (grid > 1) void readGrid(cropFrame(video, rect), grid, 0.02 / 1.04);
+    const single = grid === 1 || side !== null;
+    const rect = guideCrop(view.getBoundingClientRect(), guide.getBoundingClientRect(), video.videoWidth, video.videoHeight, zoom, single ? MARGIN : 0.02);
+    if (side === 'front') pictureOnly(cropFrame(video, rect), MARGIN / (1 + MARGIN * 2));
+    else if (!single) void readGrid(cropFrame(video, rect), grid, 0.02 / 1.04);
     else void read(cropFrame(video, rect), MARGIN / (1 + MARGIN * 2));
   };
 
@@ -296,7 +372,8 @@ export function Scan({ route }: { route: Route }) {
     try {
       const bitmap = await createImageBitmap(file);
       // A photo from the phone's own camera app has far more detail than a video frame.
-      if (grid > 1) await readGrid(toCanvas(bitmap, 4200), grid, 0);
+      if (side === 'front') pictureOnly(toCanvas(bitmap, 2000), 0);
+      else if (grid > 1 && side === null) await readGrid(toCanvas(bitmap, 4200), grid, 0);
       else await read(toCanvas(bitmap, 2000), 0);
     } catch {
       setProblem('That photo could not be opened.');
@@ -365,6 +442,9 @@ export function Scan({ route }: { route: Route }) {
     setQuery('');
     cardRef.current = null;
     textRef.current = '';
+    keptRef.current = null;
+    setSide(null);
+    setFrontTaken(false);
   };
 
   const confirm = () => {
@@ -421,6 +501,10 @@ export function Scan({ route }: { route: Route }) {
   // The same player's other cards in this set: the reader finds the name, but
   // cannot tell a base card from a sticker or an insert.
   const siblings = picked ? sameName(picked.product, picked.card).slice(0, 12) : [];
+  // A front that left the set in doubt: its back can be read without losing the front picture.
+  const canTurn = shot !== null && side === null && !picked && !busy && !batch && !query.trim() && found !== null && !looksLikeBack(textRef.current);
+  // A card identified from its back: the front makes the better picture.
+  const backShot = picked !== null && shot !== null && !frontTaken && !query.trim() && looksLikeBack(textRef.current);
   const canLook = !picked && !busy && (query.trim().length >= 3 || (found !== null && textRef.current.trim().length > 0));
 
   return (
@@ -479,6 +563,7 @@ export function Scan({ route }: { route: Route }) {
             </div>
           ) : null}
           {shot && !busy && !batch ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
+          {!shot && !busy && side ? <div className="viewfinder-tag">{side === 'back' ? 'Now the back of the same card' : 'Now the front of the same card'}</div> : null}
           {shot && !busy && batch ? <div className="viewfinder-tag">About {cardPx} pixels across each card</div> : null}
         </div>
       )}
@@ -553,21 +638,49 @@ export function Scan({ route }: { route: Route }) {
                 {naming ? <input type="text" aria-label="What is this version called?" value={otherLabel(version)} onChange={(e) => setVersion(otherVersion(e.target.value))} placeholder="What is it called? e.g. Blue" maxLength={40} autoComplete="off" /> : null}
               </div>
             ) : null}
-            <div className="row-buttons">
-              <button type="button" className="btn btn-red btn-big" onClick={confirm}>
-                ADD TO BINDER
-              </button>
-              <button type="button" className="btn btn-big" onClick={() => setPicked(null)}>
-                NOT THIS
-              </button>
-            </div>
+            {side === 'front' ? (
+              <>
+                <p className="panel-note">Show the front of this card. Only the picture is taken; the match stays as it is.</p>
+                <div className="row-buttons">
+                  <button type="button" className="btn btn-red btn-big" onClick={capture} disabled={camera !== 'live'}>
+                    TAKE PICTURE
+                  </button>
+                  <label className="btn btn-big btn-file">
+                    USE A PHOTO
+                    <input type="file" accept="image/*" capture="environment" onChange={(e) => void onPhoto(e.target.files?.[0])} />
+                  </label>
+                </div>
+                <button type="button" className="link-plain" onClick={keepFirstSide}>
+                  Keep the back as the picture
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="row-buttons">
+                  <button type="button" className="btn btn-red btn-big" onClick={confirm}>
+                    ADD TO BINDER
+                  </button>
+                  <button type="button" className="btn btn-big" onClick={() => setPicked(null)}>
+                    NOT THIS
+                  </button>
+                </div>
+                {backShot ? (
+                  <>
+                    <p className="panel-note">That was the back of the card, so the back is the picture that will be kept.</p>
+                    <button type="button" className="btn" onClick={() => otherSide('front')}>
+                      PICTURE THE FRONT INSTEAD
+                    </button>
+                  </>
+                ) : null}
+              </>
+            )}
           </div>
         ) : (
           <>
             {typeMode ? null : (
               <>
                 <div className="row-buttons">
-                  <button type="button" className="btn btn-red btn-big" onClick={shot ? reset : capture} disabled={camera !== 'live' || busy}>
+                  <button type="button" className="btn btn-red btn-big" onClick={shot ? reset : capture} disabled={busy || (!shot && camera !== 'live')}>
                     {busy ? 'READING…' : shot ? 'SCAN AGAIN' : 'READ CARD'}
                   </button>
                   <label className="btn btn-big btn-file">
@@ -612,6 +725,15 @@ export function Scan({ route }: { route: Route }) {
                     Lay {grid * grid} cards edge to edge in a {grid}×{grid} block and fill the frame with them. The more cards per shot, the fewer pixels each one gets: if names stop reading, use fewer cards, or "Use a photo", which captures far more detail than live video.
                   </p>
                 ) : null}
+                {side === 'back' && !shot ? (
+                  <p className="panel-note">
+                    Show the back of the same card. It is only read to find the set; the front stays as the picture.{' '}
+                    <button type="button" className="link-plain" onClick={keepFirstSide}>
+                      Go back
+                    </button>
+                  </p>
+                ) : null}
+                {!shot && side === null ? <p className="mono-note">First card from a new set? Scan its back first: the back prints the set's name, and the app will offer to take the front for the picture.</p> : null}
                 {!shot ? <p className="mono-note">Take cards out of sleeves and top-loaders if you can. The app finds a bare card's edges and crops the photo much more cleanly, and there is no glare over the name.</p> : null}
                 {camera === 'live' && !shot && grid === 1 ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus. Fancy lettering on the front? The back usually reads better.</p> : null}
               </>
@@ -657,6 +779,12 @@ export function Scan({ route }: { route: Route }) {
               <p className="panel-note" role="status">
                 {problem}
               </p>
+            ) : null}
+
+            {canTurn ? (
+              <button type="button" className={found && found.length > 0 && !said ? 'link-plain' : 'btn'} onClick={() => otherSide('back')}>
+                {found && found.length > 0 ? 'Wrong set? Scan the back of this card' : 'SCAN THE BACK OF THIS CARD'}
+              </button>
             ) : null}
 
             {said ? otherSets : null}

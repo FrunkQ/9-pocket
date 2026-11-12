@@ -180,18 +180,21 @@ export const PASS_COUNT = PASSES.length;
  * so far and how many passes came before it; return true from it to stop
  * early (a confident match was found).
  * Resolves with all the text read.
+ *
+ * `plain` is for the back of a card, which is ordinary upright print: only
+ * the upright passes are used, in their usual order.
  */
-export async function readCard(card: HTMLCanvasElement, onText: (text: string, pass: number) => boolean): Promise<string> {
+export async function readCard(card: HTMLCanvasElement, onText: (text: string, pass: number) => boolean, plain = false): Promise<string> {
   const worker = await getWorker();
   let text = '';
-  const passes = passOrder();
+  const passes = plain ? PASSES.filter((p) => !p.name.startsWith('turned')) : passOrder();
   for (let i = 0; i < passes.length; i++) {
     const pass = passes[i];
     await worker.setParameters({ tessedit_pageseg_mode: pass.mode as never });
     const result = await worker.recognize(pass.prepare(card));
     text += result.data.text + '\n';
     if (onText(text, i)) {
-      winners = [pass.name, ...winners.filter((name) => name !== pass.name)].slice(0, 3);
+      if (!plain) winners = [pass.name, ...winners.filter((name) => name !== pass.name)].slice(0, 3);
       break;
     }
   }
