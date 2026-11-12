@@ -390,7 +390,9 @@ input[type='text'] {
 
 .sports {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* One equal column per kind of card shown, however many that is. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   border-top: 2px solid var(--ink);
   border-bottom: 1px solid var(--ink);
 }

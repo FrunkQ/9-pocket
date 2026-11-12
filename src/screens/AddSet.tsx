@@ -80,7 +80,7 @@ export function AddSet({ route }: { route: Route }) {
       </header>
 
       <div className="sports" role="group" aria-label="Card type">
-        {CATEGORIES.map((c) => (
+        {CATEGORIES.filter((c) => c.ready).map((c) => (
           <a key={c.id} className={c.id === category ? 'is-on' : c.ready ? '' : 'is-off'} aria-current={c.id === category} href={c.ready ? href(['add'], { c: c.id }) : undefined}>
             <span>{c.label}</span>
             <small>{c.ready ? 'browse' : 'later'}</small>

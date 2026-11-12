@@ -33,6 +33,7 @@ export const CATEGORIES: { id: Category; label: string; ready: boolean }[] = [
   { id: 'hockey', label: 'Hockey', ready: true },
   { id: 'mtg', label: 'Magic', ready: true },
   { id: 'pokemon', label: 'Pokémon', ready: true },
+  // Not shown anywhere until it has a source of checklists and is marked ready.
   { id: 'baseball', label: 'Baseball', ready: false },
 ];
 

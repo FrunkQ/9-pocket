@@ -197,7 +197,7 @@ export function Home() {
       </div>
 
       <div className="sports" role="group" aria-label="Card type">
-        {CATEGORIES.map((c) => {
+        {CATEGORIES.filter((c) => c.ready).map((c) => {
           const n = all.filter((id) => categoryOf(id) === c.id).length;
           return (
             <button key={c.id} type="button" className={c.id === category ? 'is-on' : ''} aria-pressed={c.id === category} disabled={!c.ready} onClick={() => updateSettings({ category: c.id })}>
