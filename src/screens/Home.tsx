@@ -283,7 +283,13 @@ export function Home() {
 
       <Backup />
 
-      <p className="mono-note">Version {__BUILD__}</p>
+      <p className="mono-note version">
+        Version {__BUILD__} ·{' '}
+        <a href="https://github.com/FrunkQ/9-pocket" target="_blank" rel="noreferrer">
+          source on GitHub
+        </a>{' '}
+        · MIT licence
+      </p>
 
       <BottomBar left={{ label: 'BINDERS', to: href([]), active: true }} right={{ label: 'SEARCH', to: href(['scan'], { mode: 'type' }) }} />
     </Screen>

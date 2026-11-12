@@ -31,7 +31,7 @@ interface BatchItem {
   choice: number;
 }
 /** Spare border captured around the guide so the card's edges are in the picture. */
-const MARGIN = 0.08;
+const MARGIN = 0.12;
 
 const where = (c: Candidate) => [c.card.t, [c.product.name, c.product.season].filter(Boolean).join(' '), c.section.id === 'base' ? '' : c.section.name].filter(Boolean).join(' · ');
 
@@ -89,6 +89,7 @@ export function Scan({ route }: { route: Route }) {
   const [pass, setPass] = useState(0);
   const [shot, setShot] = useState<string | null>(null);
   const [flattened, setFlattened] = useState(false);
+  const [tooClose, setTooClose] = useState(false);
   const [found, setFound] = useState<Candidate[] | null>(null);
   const [others, setOthers] = useState<SetHit[] | null>(null);
   // True when the list of other sets came from what the card itself prints, unasked.
@@ -186,6 +187,7 @@ export function Scan({ route }: { route: Route }) {
         setFrontTaken(false);
       }
       setFlattened(flat.found);
+      setTooClose(flat.tooClose);
       setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
       let best: Candidate[] = [];
       if (kept) {
@@ -305,6 +307,7 @@ export function Scan({ route }: { route: Route }) {
     const flat = straighten(source, 1000, margin);
     cardRef.current = flat.canvas;
     setFlattened(flat.found);
+    setTooClose(flat.tooClose);
     setShot(flat.canvas.toDataURL('image/jpeg', 0.75));
     keptRef.current = null;
     setSide(null);
@@ -562,7 +565,7 @@ export function Scan({ route }: { route: Route }) {
               {progress || `Reading the card… ${pass}/${PASS_COUNT}`}
             </div>
           ) : null}
-          {shot && !busy && !batch ? <div className="viewfinder-tag">{flattened ? 'Straightened' : 'Edges not found, cropped to the frame'}</div> : null}
+          {shot && !busy && !batch ? <div className="viewfinder-tag">{flattened ? 'Straightened' : tooClose ? 'Too close to crop: leave a little space all round' : 'Edges not found, cropped to the frame'}</div> : null}
           {!shot && !busy && side ? <div className="viewfinder-tag">{side === 'back' ? 'Now the back of the same card' : 'Now the front of the same card'}</div> : null}
           {shot && !busy && batch ? <div className="viewfinder-tag">About {cardPx} pixels across each card</div> : null}
         </div>
@@ -781,9 +784,9 @@ export function Scan({ route }: { route: Route }) {
               </p>
             ) : null}
 
-            {canTurn ? (
-              <button type="button" className={found && found.length > 0 && !said ? 'link-plain' : 'btn'} onClick={() => otherSide('back')}>
-                {found && found.length > 0 ? 'Wrong set? Scan the back of this card' : 'SCAN THE BACK OF THIS CARD'}
+            {canTurn && !(found && found.length > 0) ? (
+              <button type="button" className="btn" onClick={() => otherSide('back')}>
+                SCAN THE BACK OF THIS CARD
               </button>
             ) : null}
 
@@ -812,6 +815,12 @@ export function Scan({ route }: { route: Route }) {
               </>
             ) : null}
             {query.trim() && typed.length === 0 ? <p className="panel-note">Nothing matches in the sets on this device.</p> : null}
+
+            {canTurn && found && found.length > 0 ? (
+              <button type="button" className="link-plain" onClick={() => otherSide('back')}>
+                Wrong set? Scan the back of this card
+              </button>
+            ) : null}
 
             {canLook ? (
               <div className="field">

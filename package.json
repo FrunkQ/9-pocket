@@ -2,6 +2,7 @@
   "name": "nine-pocket",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "description": "Scan your cards, fill the binder. A free set-completion tracker for trading cards.",
   "scripts": {
