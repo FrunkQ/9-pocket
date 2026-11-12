@@ -1,15 +1,12 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { baseSections, cardKey, categoryOf, getProduct, useCatalogVersion } from '../data/catalog';
 import { BottomBar, Screen } from '../components/Chrome';
-import { CURRENCIES, ratesNote } from '../lib/currency';
-import { EBAY_SITES } from '../lib/ebay';
 import { copyValue, moneyTotal } from '../lib/estimate';
-import { promptInstall, useInstall } from '../lib/install';
-import { photoCount, usePhotoVersion } from '../lib/photos';
+import { useInstall } from '../lib/install';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { binderIds, copiesByCard, downloadBackup, eraseEverything, importBackup, isKindShown, isOwnPhoto, removeBinder, showKind, shownKinds, updateSettings, useCollection } from '../lib/store';
+import { binderIds, copiesByCard, removeBinder, shownKinds, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Copy, type Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
@@ -28,140 +25,8 @@ function Fingerprint({ product, byCard }: { product: Product; byCard: Map<string
   );
 }
 
-function Backup() {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const modeRef = useRef<'merge' | 'replace'>('merge');
-  const [message, setMessage] = useState('');
-  const [withPhotos, setWithPhotos] = useState(true);
-  const state = useCollection();
-  usePhotoVersion();
-  const photos = photoCount(isOwnPhoto);
-
-  const pick = (mode: 'merge' | 'replace') => {
-    if (mode === 'replace' && state.copies.length > 0) {
-      const ok = window.confirm(`Replace the ${state.copies.length} cards saved here with the contents of a backup file? This cannot be undone.`);
-      if (!ok) return;
-    }
-    modeRef.current = mode;
-    fileRef.current?.click();
-  };
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      const result = await importBackup(await file.text(), modeRef.current);
-      const pictures = result.photos ? ` ${result.photos} card photos restored.` : '';
-      setMessage((modeRef.current === 'replace' ? `Restored ${result.total} cards from the backup.` : `Added ${result.added} cards from the backup. ${result.total} in total.`) + pictures);
-    } catch {
-      setMessage('That file could not be read as a Nine Pocket backup.');
-    }
-    if (fileRef.current) fileRef.current.value = '';
-  };
-
-  const erase = () => {
-    const ok = window.confirm('Erase everything Nine Pocket has saved on this device: every card, photo, set and friend? This cannot be undone.');
-    if (ok) void eraseEverything();
-  };
-
-  return (
-    <section className="panel" aria-labelledby="backup-title">
-      <h2 id="backup-title" className="eyebrow">
-        KEEP IT SAFE
-      </h2>
-      <p className="panel-text">Your collection is saved in this browser only. Download a backup file to keep a copy or move it to another device.</p>
-      {photos > 0 ? (
-        <label className="check">
-          <input type="checkbox" checked={withPhotos} onChange={(e) => setWithPhotos(e.target.checked)} />
-          <span>
-            Include the {photos} card {photos === 1 ? 'photo' : 'photos'} (a bigger file)
-          </span>
-        </label>
-      ) : null}
-      <div className="row-buttons">
-        <button type="button" className="btn btn-ink" onClick={() => void downloadBackup(withPhotos && photos > 0)}>
-          Download backup
-        </button>
-        <button type="button" className="btn" onClick={() => pick('merge')}>
-          Add from backup
-        </button>
-        <button type="button" className="btn" onClick={() => pick('replace')}>
-          Replace with backup
-        </button>
-      </div>
-      <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
-      {message ? (
-        <p className="panel-note" role="status">
-          {message}
-        </p>
-      ) : null}
-      <label className="field field-inline">
-        <span className="field-label">eBay links open on</span>
-        <select value={state.settings.ebaySite} onChange={(e) => updateSettings({ ebaySite: e.target.value })}>
-          {EBAY_SITES.map((s) => (
-            <option key={s.host} value={s.host}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field field-inline">
-        <span className="field-label">Show values in</span>
-        <select value={state.settings.currency} onChange={(e) => updateSettings({ currency: e.target.value })}>
-          {CURRENCIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.label} ({c.symbol})
-            </option>
-          ))}
-        </select>
-      </label>
-      {state.settings.currency !== 'USD' ? <p className="mono-note">Converted from US dollars using {ratesNote()}.</p> : null}
-      <details className="advanced">
-        <summary>Advanced</summary>
-        <p className="panel-text">For testing. Removes every card, photo, downloaded set and friend from this device and starts the app fresh.</p>
-        <button type="button" className="link-danger" onClick={erase}>
-          Erase everything on this device
-        </button>
-      </details>
-    </section>
-  );
-}
-
-/** Offers to put the app on the home screen, where the browser allows it. */
-function Install() {
-  const install = useInstall();
-  const state = useCollection();
-  if (install.installed || (!install.canPrompt && !install.ios)) return null;
-  return (
-    <section className="panel" aria-labelledby="install-title">
-      <h2 id="install-title" className="eyebrow">
-        INSTALL THE APP
-      </h2>
-      {install.canPrompt ? (
-        <>
-          <p className="panel-text">Put Nine Pocket on your home screen. It opens full-screen and works without a connection.</p>
-          <div className="row-buttons">
-            <button type="button" className="btn btn-ink" onClick={() => void promptInstall()}>
-              Install
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="panel-text">
-            In Safari, tap the Share button, then <strong>Add to Home Screen</strong>. It opens full-screen and works without a connection.
-          </p>
-          {state.copies.length > 0 ? (
-            <p className="panel-text">The installed app keeps its own storage. To bring your {state.copies.length} cards across, download a backup here first, then use "Replace with backup" inside the installed app.</p>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
-}
-
 export function Home() {
   const state = useCollection();
-  const friends = useFriends();
   useCatalogVersion();
   const byCard = copiesByCard(state);
   const total = state.copies.reduce((sum, c) => sum + copyValue(c), 0);
@@ -172,6 +37,10 @@ export function Home() {
   const mine = all.filter((id) => categoryOf(id) === category);
   const label = CATEGORIES.find((c) => c.id === category)?.label ?? '';
   const [removing, setRemoving] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const friends = useFriends();
+  const install = useInstall();
+  const canInstall = !install.installed && (install.canPrompt || install.ios);
 
   const remove = (id: string, name: string) => {
     const held = state.copies.filter((c) => c.product === id).length;
@@ -183,8 +52,56 @@ export function Home() {
     <Screen>
       <header className="home-head">
         <div className="wordmark">NINE POCKET</div>
-        <div className="mono-note">saved on this device</div>
+        <button type="button" className="burger" aria-label="Menu" aria-expanded={menu} aria-controls="home-menu" onClick={() => setMenu((open) => !open)}>
+          <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square">
+            {menu ? <path d="M5 5l14 14M19 5L5 19" /> : <path d="M3 6h18M3 12h18M3 18h18" />}
+          </svg>
+        </button>
       </header>
+
+      {menu ? (
+        <nav id="home-menu" className="menu" aria-label="More">
+          <a href={href(['friends'])}>
+            SHARE WITH A FRIEND
+            <small>{friends.length ? `Compare collections · ${friends.length} saved` : 'Send your collection and compare'}</small>
+          </a>
+          <a href={href(['settings', 'types'])}>
+            ADD OR HIDE CARD TYPES
+            <small>Baseball, football and the rest</small>
+          </a>
+          {mine.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setRemoving(true);
+                setMenu(false);
+              }}
+            >
+              REMOVE A SET
+              <small>Sold it, or added it by mistake</small>
+            </button>
+          ) : null}
+          <a href={href(['settings', 'backup'])}>
+            BACKUP FILES
+            <small>Save a copy, restore one, move to another device</small>
+          </a>
+          <a href={href(['settings', 'values'])}>
+            EBAY AND CURRENCY
+            <small>Which eBay site, and what values are shown in</small>
+          </a>
+          {canInstall ? (
+            <a href={href(['settings', 'install'])}>
+              INSTALL THE APP
+              <small>Put it on your home screen</small>
+            </a>
+          ) : null}
+          <a href={href(['settings', 'about'])}>
+            ABOUT
+            <small>What this is, who to ask, where the code lives</small>
+          </a>
+          <p className="mono-note version">Version {__BUILD__}</p>
+        </nav>
+      ) : null}
 
       <div className="home-total">
         <div>
@@ -271,53 +188,11 @@ export function Home() {
         </a>
       </div>
 
-      <Install />
-
-      {mine.length > 0 ? (
-        <button type="button" className="link-plain" onClick={() => setRemoving((on) => !on)}>
-          {removing ? 'Done removing' : 'Remove a set'}
+      {removing ? (
+        <button type="button" className="btn" onClick={() => setRemoving(false)}>
+          Done removing
         </button>
       ) : null}
-
-      <section className="panel" aria-labelledby="friends-title">
-        <h2 id="friends-title" className="eyebrow">
-          COMPARE WITH A FRIEND
-        </h2>
-        <p className="panel-text">Send your collection to someone, open theirs, and see which cards each of you could give the other.</p>
-        <div className="row-buttons">
-          <a className="btn btn-ink" href={href(['friends'])}>
-            Share and compare{friends.length ? ` (${friends.length})` : ''}
-          </a>
-        </div>
-      </section>
-
-      <section className="panel" aria-labelledby="kinds-title">
-        <h2 id="kinds-title" className="eyebrow">
-          ADD AND HIDE CARD TYPES (E.G. BASEBALL, FOOTBALL)
-        </h2>
-        <p className="panel-text">Switch on the kinds of card you collect and switch off the ones you do not. A type that is off is only hidden: its sets and cards are kept. The app opens on the type you use most.</p>
-        <div className="chips" role="group" aria-label="Card types shown">
-          {CATEGORIES.map((c) => {
-            const on = isKindShown(state.settings, c.id);
-            return (
-              <button key={c.id} type="button" className={on ? 'chip is-on' : 'chip'} aria-pressed={on} disabled={on && shown.length === 1} onClick={() => showKind(c.id, !on)}>
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mono-note">Baseball, Basketball, Football, Soccer and Other have no list the app is allowed to collect. Their sets come from checklist files you download and load under "Add a set".</p>
-      </section>
-
-      <Backup />
-
-      <p className="mono-note version">
-        Version {__BUILD__} ·{' '}
-        <a href="https://github.com/FrunkQ/9-pocket" target="_blank" rel="noreferrer">
-          source on GitHub
-        </a>{' '}
-        · MIT licence
-      </p>
 
       <BottomBar left={{ label: 'BINDERS', to: href([]), active: true }} right={{ label: 'SEARCH', to: href(['scan'], { mode: 'type' }) }} />
     </Screen>

@@ -12,6 +12,7 @@ import { Missing } from './screens/Missing';
 import { Loading, NotFound } from './screens/NotFound';
 import { Scan } from './screens/Scan';
 import { SetBinder } from './screens/SetBinder';
+import { Settings } from './screens/Settings';
 
 export function App() {
   const route = useRoute();
@@ -39,6 +40,7 @@ export function App() {
   if (!first) return <Home />;
   if (first === 'add') return <AddSet route={route} />;
   if (first === 'import') return <ImportSet route={route} />;
+  if (first === 'settings') return <Settings route={route} />;
   if (first === 'set' && third === 'missing') return <Missing route={route} />;
   if (first === 'set') return <SetBinder route={route} />;
   if (first === 'card') return <CardDetail route={route} />;
