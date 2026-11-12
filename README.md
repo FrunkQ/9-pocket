@@ -29,7 +29,8 @@ Each of these kinds of card is a tab that stays hidden until a set of that kind 
 
 ## What it does
 
-- **The menu**: the home screen shows only the collection. Its menu button opens Share with a friend, Add or hide card types, Remove a set, Backup files, eBay and currency, Install the app (when the browser allows it) and About.
+- **The menu**: the home screen shows only the collection. Its menu button opens Share with a friend, Add or hide card types, Manage sets, Backup files, eBay and currency, Install the app (when the browser allows it) and About.
+- **Manage sets**: change a whole set at once. Mark every card in it as sleeved, in top loaders or graded, set them all to one condition, or remove the set. Each change asks first.
 - **Your tabs**: "Add or hide card types" in the menu switches tabs on and off, so a collector sees only the kinds of card they collect. The app opens on the tab used most.
 - **Add a set** from the list, or scan a card and let the app find which set it is from. When a card prints its own set or subset (hockey backs say "2025-26 SP HOCKEY"; fronts often name the subset, "Rookie Authentics") and that set is not in your binders, the app offers it above the other matches, even if the player was found in a set you do have. The version printed on the back ("BLUE") is selected for you. Matching itself only looks in sets already downloaded to the device, so when a scan matches nothing there, the app lists the sets that card is in, ready to add.
 - **Scan a card** with the phone camera. The app finds the card's edges, straightens it, reads the text on it in the browser and offers the closest matches to confirm. A photo upload and typed search do the same job without a camera. Typed search takes a name, a card number ("MVP-6", "MVP 6" and "MVP6" all work) or a subset ("stickers").

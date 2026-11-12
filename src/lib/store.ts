@@ -110,6 +110,16 @@ export function updateCopy(id: string, patch: Partial<Pick<Copy, 'version' | 'co
   commit({ ...state, settings, copies: state.copies.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 }
 
+/** Changes every card recorded in a set at once: all sleeved, all regraded. Returns how many changed. */
+export function updateSetCopies(productId: string, patch: Partial<Pick<Copy, 'condition' | 'protection'>>): number {
+  const count = state.copies.filter((c) => c.product === productId).length;
+  if (count === 0) return 0;
+  // How a whole set is now kept is the likeliest way the next card will be kept too.
+  const settings = { ...state.settings, ...(patch.protection ? { protection: patch.protection } : {}) };
+  commit({ ...state, settings, copies: state.copies.map((c) => (c.product === productId ? { ...c, ...patch } : c)) });
+  return count;
+}
+
 export const defaultCondition = (settings: Settings): Condition => settings.condition ?? 'NM';
 export const defaultProtection = (settings: Settings): Protection => settings.protection ?? 'sleeve';
 

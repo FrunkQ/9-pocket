@@ -6,7 +6,7 @@ import { useInstall } from '../lib/install';
 import { href } from '../lib/router';
 import { useFriends } from '../lib/share';
 import { productStats } from '../lib/stats';
-import { binderIds, copiesByCard, removeBinder, shownKinds, updateSettings, useCollection } from '../lib/store';
+import { binderIds, copiesByCard, shownKinds, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Copy, type Product } from '../types';
 
 /** One square per base card, lit when owned: shows at a glance which numbers are in. */
@@ -36,17 +36,11 @@ export function Home() {
   const fromFiles = CATEGORIES.find((c) => c.id === category)?.source === 'files';
   const mine = all.filter((id) => categoryOf(id) === category);
   const label = CATEGORIES.find((c) => c.id === category)?.label ?? '';
-  const [removing, setRemoving] = useState(false);
   const [menu, setMenu] = useState(false);
   const friends = useFriends();
   const install = useInstall();
   const canInstall = !install.installed && (install.canPrompt || install.ios);
 
-  const remove = (id: string, name: string) => {
-    const held = state.copies.filter((c) => c.product === id).length;
-    const ok = window.confirm(held ? `Remove ${name} and the ${held} ${held === 1 ? 'card' : 'cards'} recorded in it? This cannot be undone.` : `Remove ${name} from your sets?`);
-    if (ok) removeBinder(id);
-  };
 
   return (
     <Screen>
@@ -69,17 +63,11 @@ export function Home() {
             ADD OR HIDE CARD TYPES
             <small>Baseball, football and the rest</small>
           </a>
-          {mine.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => {
-                setRemoving(true);
-                setMenu(false);
-              }}
-            >
-              REMOVE A SET
-              <small>Sold it, or added it by mistake</small>
-            </button>
+          {all.length > 0 ? (
+            <a href={href(['manage'])}>
+              MANAGE SETS
+              <small>Sleeve, regrade or remove a whole set</small>
+            </a>
           ) : null}
           <a href={href(['settings', 'backup'])}>
             BACKUP FILES
@@ -140,11 +128,6 @@ export function Home() {
                 <a className="binder-card binder-card-off" href={href(['set', id])}>
                   <div className="binder-card-sub">This set has not downloaded yet. Open it when you are online.</div>
                 </a>
-                {removing ? (
-                  <button type="button" className="btn btn-remove" onClick={() => remove(id, 'this set')}>
-                    Remove this set
-                  </button>
-                ) : null}
               </div>
             );
           }
@@ -168,11 +151,6 @@ export function Home() {
                 <span className="dim">{stats.missing.length === 0 ? 'complete' : `${moneyTotal(stats.toFinish)} to finish`}</span>
               </div>
             </a>
-            {removing ? (
-              <button type="button" className="btn btn-remove" onClick={() => remove(id, product.name)}>
-                Remove {product.name}
-              </button>
-            ) : null}
             </div>
           );
         })}
@@ -188,11 +166,6 @@ export function Home() {
         </a>
       </div>
 
-      {removing ? (
-        <button type="button" className="btn" onClick={() => setRemoving(false)}>
-          Done removing
-        </button>
-      ) : null}
 
       <BottomBar left={{ label: 'BINDERS', to: href([]), active: true }} right={{ label: 'SEARCH', to: href(['scan'], { mode: 'type' }) }} />
     </Screen>

@@ -127,7 +127,7 @@ export function SetBinder({ route }: { route: Route }) {
       </p>
 
       <details className="advanced">
-        <summary>Set options: source, refresh, remove</summary>
+        <summary>Set options: sleeve or regrade all, source, remove</summary>
         {product.source.startsWith('file:') ? (
           <p className="panel-text">
             Loaded from your file {product.source.slice(5)}
@@ -152,6 +152,11 @@ export function SetBinder({ route }: { route: Route }) {
             <button type="button" className="btn" onClick={() => void refreshProduct(id)}>
               Refresh cards and prices
             </button>
+          ) : null}
+          {inBinders ? (
+            <a className="btn" href={href(['manage', id])}>
+              Sleeve or regrade every card
+            </a>
           ) : null}
           {inBinders ? (
             <button type="button" className="link-danger" onClick={remove}>
