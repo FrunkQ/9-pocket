@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react';
 import { CATEGORIES, type Category, type CollectionState, type Condition, type Copy, type Product, type Protection, type Settings } from '../types';
 import { cardKey, categoryOf, ensureProducts, importedProducts, isOther, otherLabel, saveImported } from '../data/catalog';
 import { setDisplayCurrency } from './currency';
+import { setRules } from './estimate';
 import { dbDelete } from './db';
 import { deletePhoto, deletePhotosWhere, exportPhotos, importPhotos, type ExportedPhoto } from './photos';
 
@@ -39,12 +40,14 @@ function isCopy(c: unknown): c is Copy {
 
 let state: CollectionState = load();
 setDisplayCurrency(state.settings.currency);
+setRules(state.settings.rules);
 let index: Map<string, Copy[]> | null = null;
 const listeners = new Set<() => void>();
 
 function commit(next: CollectionState) {
   state = next;
   setDisplayCurrency(state.settings.currency);
+  setRules(state.settings.rules);
   index = null;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

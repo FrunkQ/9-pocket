@@ -2,7 +2,7 @@ import { CardFace } from '../components/CardFace';
 import { Screen, Segmented, Tick } from '../components/Chrome';
 import { cardKey, getCard, getSection, isOther, OTHER, otherLabel, otherVersion, useProduct, versionsFor } from '../data/catalog';
 import { ebaySearchUrl, ebaySoldUrl } from '../lib/ebay';
-import { copyValue, marketPrice, moneyTotal, priceText } from '../lib/estimate';
+import { copyValue, explain, marketPrice, moneyTotal, priceText } from '../lib/estimate';
 import { photoFor, usePhotoVersion } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { addCopy, copiesByCard, namedVersions, removeCopy, updateCopy, useCollection } from '../lib/store';
@@ -31,6 +31,8 @@ export function CardDetail({ route }: { route: Route }) {
 
   const facts = [`No. ${card.n}`, card.t, card.sub ?? '', card.rc ? 'Rookie' : '', card.sn ? `/${card.sn}` : '', card.au ? 'Autograph' : '', card.sp ?? ''].filter(Boolean).join(' · ');
   const priced = marketPrice(card) !== undefined;
+  // The working shown is for the copy held when there is exactly one, otherwise for the plain card.
+  const worked = copies.length === 1 ? explain(product, section, card, copies[0].version, copies[0].condition) : explain(product, section, card);
   const add = (version: string) => addCopy({ product: product.id, section: section.id, n: card.n, version });
 
   return (
@@ -65,6 +67,22 @@ export function CardDetail({ route }: { route: Route }) {
           </div>
         </div>
       </header>
+
+      {worked.steps.length > 0 ? (
+        <details className="advanced working">
+          <summary>How this value was worked out</summary>
+          <ol className="steps">
+            {worked.steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+          {worked.real ? null : (
+            <a className="link-plain" href={href(['settings', 'guesstimator'])}>
+              Change the rules in the Guesstimator
+            </a>
+          )}
+        </details>
+      ) : null}
 
       <div className="card-actions">
         <a className="btn btn-ink" href={ebaySearchUrl(site, product, section, card)} target="_blank" rel="noreferrer">

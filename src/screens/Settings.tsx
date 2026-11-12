@@ -6,6 +6,7 @@ import { promptInstall, useInstall } from '../lib/install';
 import { photoCount, usePhotoVersion } from '../lib/photos';
 import { DISCORD_URL, GITHUB_URL } from '../lib/links';
 import { href, type Route } from '../lib/router';
+import { Guesstimator } from './Guesstimator';
 import { downloadBackup, eraseEverything, importBackup, isKindShown, isOwnPhoto, showKind, shownKinds, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES } from '../types';
 
@@ -233,6 +234,7 @@ function About() {
 
 const PAGES: Record<string, { title: string; body: () => ReactElement | null }> = {
   about: { title: 'ABOUT', body: About },
+  guesstimator: { title: 'THE GUESSTIMATOR', body: Guesstimator },
   types: { title: 'CARD TYPES', body: CardTypes },
   backup: { title: 'BACKUP FILES', body: Backup },
   values: { title: 'EBAY AND CURRENCY', body: LinksAndValues },

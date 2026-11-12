@@ -29,7 +29,7 @@ Each of these kinds of card is a tab that stays hidden until a set of that kind 
 
 ## What it does
 
-- **The menu**: the home screen shows only the collection. Its menu button opens Share with a friend, Add or hide card types, Manage sets, Backup files, eBay and currency, Install the app (when the browser allows it) and About.
+- **The menu**: the home screen shows only the collection. Its menu button opens Share with a friend, Add or hide card types, Manage sets, Backup files, The Guesstimator, eBay and currency, Install the app (when the browser allows it) and About.
 - **Manage sets**: change a whole set at once. Mark every card in it as sleeved, in top loaders or graded, set them all to one condition, or remove the set. Each change asks first.
 - **Your tabs**: "Add or hide card types" in the menu switches tabs on and off, so a collector sees only the kinds of card they collect. The app opens on the tab used most.
 - **Add a set** from the list, or scan a card and let the app find which set it is from. When a card prints its own set or subset (hockey backs say "2025-26 SP HOCKEY"; fronts often name the subset, "Rookie Authentics") and that set is not in your binders, the app offers it above the other matches, even if the player was found in a set you do have. The version printed on the back ("BLUE") is selected for you. Matching itself only looks in sets already downloaded to the device, so when a scan matches nothing there, the app lists the sets that card is in, ready to add.
@@ -40,7 +40,7 @@ Each of these kinds of card is a tab that stays hidden until a set of that kind 
 - **Select**: the third tab on the scan screen, beside Camera and Type. Pick a set and every card number is a button: tap to add, tap again to take it back. The fast way to record a set you already own.
 - **Card photos**: the straightened scan is saved (compressed) with the copy and shown in the binder and on the card.
 - **Versions**: each copy records which parallel or finish it is, its condition and how it is protected. Condition and protection are asked as the card is added, starting at near mint and sleeved and then at whatever was chosen last, so a run of cards kept the same way needs no extra taps. A version the checklist does not list can be given a name of your own ("Blue"), which is then offered for the set's other cards.
-- **Values**: market prices where the source has them, otherwise an estimate marked with `~` (see `src/lib/estimate.ts`).
+- **Values**: market prices where the source has them, otherwise a guess marked with `~`. The guesses come from a short list of rules (the Guesstimator, in the menu): a starting value for the kind of card, a price for its print run or pack odds, and a multiplier for well-known players that depends on the kind of card. Every rule is a number you can change, and each card page shows the working for its value. See `src/lib/estimate.ts` for how the built-in numbers were set.
 - **Display currency**: values are worked out in US dollars and can be shown in Canadian dollars, pounds, euros or Australian dollars, using the European Central Bank's daily rates (via the Frankfurter API).
 - **eBay links** on every card: items for sale now, and recent sold prices.
 - **Compare with a friend**: send your collection as a link or a file (photos optional), open theirs, and see which cards each of you could give the other.
@@ -117,7 +117,7 @@ A kind of card is an entry in `CATEGORIES` in `src/types.ts`. With `source: 'fil
 - Card matching reads printed text. It does not compare the picture on the card, so it cannot tell parallels apart; you pick the version.
 - Hockey has no stock card images. A card shows your own scan once you have one, and a plain team-coloured face until then.
 - Straightening needs the whole card in the picture with a little of the table showing all round. It finds the card by learning the background's colours from the rim of the picture, so the card can be small, off-centre or tilted, and the background can be textured (carpet). When the card runs off the picture it says so and crops to the frame instead. A card with a border the same colour as the surface it lies on (white on white) may be cropped to the picture inside its border.
-- Estimated values come from a simple formula, not sale prices.
+- Estimated values come from the Guesstimator's rules, not sale prices. The built-in numbers were set so that the cards in a hobby box add up to about the price of the box; they were not fitted to sold listings. The list of well-known players is hockey only and fixed in the code.
 - A checklist file has to be text with one card per line. A PDF made of scanned pictures cannot be read, and a file laid out very differently from Topps' may need tidying first.
 - "Find its set" from a scan only covers Hockey, Magic and Pokémon. A set loaded from a file has to be loaded before its cards can be matched.
 - The first scan downloads the text reader (a few megabytes) and needs a connection. Adding a set needs a connection too.

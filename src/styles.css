@@ -1470,3 +1470,45 @@ textarea {
 .menu .version {
   padding: 10px 0;
 }
+
+.rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.rule-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.rule-label small {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey);
+}
+.rule-input {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.rule-input input {
+  width: 84px;
+  min-height: 40px;
+  padding: 0 8px;
+  background: #fff;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  font: 600 14px var(--mono);
+  text-align: right;
+  color: var(--ink);
+}
+.working {
+  margin: 0 16px;
+}

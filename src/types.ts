@@ -123,6 +123,8 @@ export interface Settings {
   category: Category;
   /** Currency values are shown in, e.g. "GBP". Everything is stored in US dollars. */
   currency: string;
+  /** Value rules the user has changed, by rule id (see lib/estimate.ts). */
+  rules?: Record<string, number>;
   /** The condition and protection last chosen for a card, used for the next one added. */
   condition?: Condition;
   protection?: Protection;

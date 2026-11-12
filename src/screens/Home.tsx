@@ -73,6 +73,10 @@ export function Home() {
             BACKUP FILES
             <small>Save a copy, restore one, move to another device</small>
           </a>
+          <a href={href(['settings', 'guesstimator'])}>
+            THE GUESSTIMATOR
+            <small>How card values are worked out, and the dials to change them</small>
+          </a>
           <a href={href(['settings', 'values'])}>
             EBAY AND CURRENCY
             <small>Which eBay site, and what values are shown in</small>
