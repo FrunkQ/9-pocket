@@ -28,6 +28,12 @@ interface Entry {
   teamWords: string[];
   setWords: string[];
   sectionWords: string[];
+  /** Every word of the subset's name, for typed search ("stickers"). */
+  sectionSearch: string[];
+  /** A lettered card number with the punctuation dropped: "MVP-6" is "mvp6". Empty for plain numbers. */
+  code: string;
+  /** The letters a lettered number starts with: "mvp". */
+  codeLetters: string;
 }
 
 export function fold(s: string): string {
@@ -55,10 +61,14 @@ function index(): Entry[] {
     const setWords = fold(product.name).split(' ').filter((w) => w.length >= 3 && !STOP.has(w));
     for (const section of product.sections) {
       const sectionWords = section.id === 'base' ? [] : fold(section.name).split(' ').filter((w) => w.length >= 4 && !STOP.has(w));
+      const sectionSearch = fold(section.name).split(' ').filter((w) => w.length >= 3);
       for (const card of section.cards) {
+        const squashed = card.n.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const code = /^\d+$/.test(squashed) ? '' : squashed;
+        const codeLetters = /^[a-z]+(?=\d)/.exec(code)?.[0] ?? '';
         const nameTokens = fold(card.p).split(' ').filter((t) => t.length >= 2);
         const teamWords = card.t.split('/').flatMap((t) => TEAMS[t]?.words ?? []);
-        entries.push({ product, section, card, nameTokens, teamWords, setWords, sectionWords });
+        entries.push({ product, section, card, nameTokens, teamWords, setWords, sectionWords, sectionSearch, code, codeLetters });
       }
     }
   }
@@ -182,6 +192,10 @@ export function nameAgreement(tokens: string[], person: boolean, reading: Readin
 export interface MatchOptions {
   /** Favour this set, e.g. when scanning from inside its binder. */
   preferProduct?: string;
+  /** The sets in the user's binders. Cards from any other set are unlikely and sink. */
+  have?: ReadonlySet<string>;
+  /** The set a card was last added to: a pile of cards is usually all one set. */
+  recent?: string;
   limit?: number;
 }
 
@@ -212,7 +226,8 @@ export function matchText(text: string, options: MatchOptions = {}): Candidate[]
       evidence.push('set');
     }
     if (e.sectionWords.length) {
-      if (e.sectionWords.every((w) => reading.words.has(w))) {
+      // Subset names are often in script lettering, so a near miss counts.
+      if (e.sectionWords.every((w) => reading.similarity(w) >= 0.75)) {
         score += 0.45;
         evidence.push('subset');
       } else if (e.section.kind === 'insert') {
@@ -220,6 +235,8 @@ export function matchText(text: string, options: MatchOptions = {}): Candidate[]
       }
     }
     if (options.preferProduct === e.product.id) score += 0.25;
+    else if (options.recent === e.product.id) score += 0.15;
+    if (options.have && options.have.size > 0 && !options.have.has(e.product.id)) score -= 0.5;
 
     out.push({ product: e.product, section: e.section, card: e.card, score, name, evidence });
   }
@@ -231,10 +248,33 @@ export function matchText(text: string, options: MatchOptions = {}): Candidate[]
 export function isConfident(candidates: Candidate[]): boolean {
   const best = candidates[0];
   if (!best) return false;
-  return best.name >= 0.9 && best.score >= 2.1;
+  if (best.name < 0.9) return false;
+  if (best.score >= 2.1) return true;
+  // Many cards print nothing readable but the name. A first name and surname
+  // both found (one letter out at most), with no other name close, is enough.
+  const words = fold(best.card.p).split(' ').filter((t) => t.length >= 2).length;
+  const name = fold(best.card.p);
+  return best.name >= 0.85 && words >= 2 && !candidates.some((c) => c.name >= 0.75 && fold(c.card.p) !== name);
 }
 
-/** Typed search: every word must start a word in the name, or be the card number. */
+/** The cards in the same set with the same name: a player's base card, sticker, inserts. */
+export function sameName(product: Product, card: Card): Candidate[] {
+  const name = fold(card.p);
+  if (!name) return [];
+  const out: Candidate[] = [];
+  for (const section of product.sections) {
+    for (const other of section.cards) {
+      if (fold(other.p) === name) out.push({ product, section, card: other, score: 0, name: 1, evidence: [] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Typed search: every word must start a word in the name, or be the card
+ * number, the set or the subset. A lettered number can be typed as "MVP-6",
+ * "MVP 6" or "MVP6".
+ */
 export function searchCards(query: string, options: MatchOptions = {}): Candidate[] {
   const terms = fold(query).split(' ').filter(Boolean);
   if (terms.length === 0) return [];
@@ -242,11 +282,26 @@ export function searchCards(query: string, options: MatchOptions = {}): Candidat
   for (const e of index()) {
     let ok = true;
     let score = 0;
-    for (const term of terms) {
-      if (/^\d+$/.test(term) && parseInt(e.card.n, 10) === parseInt(term, 10) && /^\d+$/.test(e.card.n)) {
+    for (let i = 0; i < terms.length; i++) {
+      const term = terms[i];
+      // "MVP-6" and "MVP 6" arrive as two words; put them back together.
+      const pair = e.code && i + 1 < terms.length ? term + terms[i + 1] : '';
+      if (pair && e.code === pair) {
+        score += 4;
+        i++;
+      } else if (pair && e.codeLetters === term && e.code.startsWith(pair)) {
+        score += 1.5; // Still typing: "MVP-6" on the way to "MVP-64".
+        i++;
+      } else if (e.code && e.code === term) {
+        score += 4;
+      } else if (e.codeLetters && term.length > e.codeLetters.length && e.code.startsWith(term)) {
+        score += 1.5;
+      } else if (/^\d+$/.test(term) && parseInt(e.card.n, 10) === parseInt(term, 10) && /^\d+$/.test(e.card.n)) {
         score += 2;
       } else if (e.nameTokens.some((t) => t.startsWith(term))) {
         score += 1;
+      } else if (e.codeLetters === term || (term.length >= 3 && e.sectionSearch.some((w) => w.startsWith(term)))) {
+        score += 0.75;
       } else if (fold(e.card.n) === term || fold(e.product.name).split(' ').includes(term)) {
         score += 0.5;
       } else {
@@ -257,6 +312,7 @@ export function searchCards(query: string, options: MatchOptions = {}): Candidat
     if (!ok) continue;
     if (e.section.kind === 'base') score += 1;
     if (options.preferProduct === e.product.id) score += 0.5;
+    if (options.have && options.have.size > 0 && !options.have.has(e.product.id)) score -= 0.75;
     out.push({ product: e.product, section: e.section, card: e.card, score, name: 1, evidence: [] });
   }
   out.sort((a, b) => b.score - a.score);

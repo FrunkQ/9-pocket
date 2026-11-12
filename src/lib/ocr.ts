@@ -4,8 +4,9 @@
 // Card lettering is hard for a document reader: slanted display fonts,
 // outlines, light text on photographs. So the card is read several times,
 // each time prepared differently (whole card, high-contrast negative, the
-// name bands enlarged, pure black-and-white), and the caller can stop as
-// soon as one of the readings gives a confident match.
+// name bands enlarged, pure black-and-white, turned on its side for names
+// printed up the edge), and the caller can stop as soon as one of the
+// readings gives a confident match.
 import type { Worker } from 'tesseract.js';
 
 let workerPromise: Promise<Worker> | null = null;
@@ -99,6 +100,42 @@ function blackAndWhite(source: HTMLCanvasElement, invert: boolean): HTMLCanvasEl
   return canvas;
 }
 
+/** How much of the card's width counts as one side, for names printed up the edge. */
+const SIDE = 0.36;
+
+/**
+ * The card turned a quarter turn, for a name printed up or down its side
+ * (the recogniser only reads upright lettering). With `sides`, only the two
+ * long edges of the card are kept, enlarged: that is where such names sit.
+ */
+function turned(source: HTMLCanvasElement, clockwise: boolean, sides = false, filter = 'none'): HTMLCanvasElement {
+  const scale = sides ? 1.8 : 1;
+  const full = document.createElement('canvas');
+  full.width = Math.round(source.height * scale);
+  full.height = Math.round(source.width * scale);
+  const ctx = full.getContext('2d')!;
+  ctx.filter = filter;
+  ctx.imageSmoothingQuality = 'high';
+  if (clockwise) {
+    ctx.translate(full.width, 0);
+    ctx.rotate(Math.PI / 2);
+  } else {
+    ctx.translate(0, full.height);
+    ctx.rotate(-Math.PI / 2);
+  }
+  ctx.drawImage(source, 0, 0, source.width * scale, source.height * scale);
+  if (!sides) return full;
+  // The card's long edges are now the top and bottom of the picture.
+  const strip = Math.round(full.height * SIDE);
+  const canvas = document.createElement('canvas');
+  canvas.width = full.width;
+  canvas.height = strip * 2;
+  const out = canvas.getContext('2d')!;
+  out.drawImage(full, 0, 0, full.width, strip, 0, 0, full.width, strip);
+  out.drawImage(full, 0, full.height - strip, full.width, strip, 0, strip, full.width, strip);
+  return canvas;
+}
+
 interface Pass {
   name: string;
   /** Page layout hint for the recogniser: 11 = scattered text, 6 = one block. */
@@ -116,28 +153,47 @@ const PASSES: Pass[] = [
   { name: 'negative', mode: '11', prepare: (c) => redraw(c, WHOLE, 1, 'grayscale(1) invert(1) contrast(1.5)') },
   { name: 'bottom band', mode: '11', prepare: (c) => redraw(c, BOTTOM, 1.8, 'grayscale(1) contrast(1.4)') },
   { name: 'top band', mode: '11', prepare: (c) => redraw(c, TOP, 1.8, 'grayscale(1) contrast(1.4)') },
+  { name: 'turned right', mode: '11', prepare: (c) => turned(c, true) },
+  { name: 'turned right, sides', mode: '11', prepare: (c) => turned(c, true, true, 'grayscale(1) invert(1) contrast(1.5)') },
   { name: 'black on white', mode: '11', prepare: (c) => blackAndWhite(c, false) },
   { name: 'white on black', mode: '11', prepare: (c) => blackAndWhite(c, true) },
   { name: 'bottom band negative', mode: '6', prepare: (c) => blackAndWhite(redraw(c, BOTTOM, 1.8, 'none'), true) },
   { name: 'top band negative', mode: '6', prepare: (c) => blackAndWhite(redraw(c, TOP, 1.8, 'none'), true) },
+  { name: 'turned left', mode: '11', prepare: (c) => turned(c, false) },
+  { name: 'turned left, sides', mode: '11', prepare: (c) => turned(c, false, true, 'grayscale(1) invert(1) contrast(1.5)') },
 ];
+
+// Cards scanned one after another are usually from the same set, with the
+// name in the same place and lettering. So the passes that settled the last
+// few cards are tried first on the next one, most recent first.
+let winners: string[] = [];
+
+function passOrder(): Pass[] {
+  const first = winners.map((name) => PASSES.find((p) => p.name === name)).filter((p): p is Pass => p !== undefined);
+  return [...first, ...PASSES.filter((p) => !first.includes(p))];
+}
 
 export const PASS_COUNT = PASSES.length;
 
 /**
  * Reads the card pass by pass. After each pass `onText` gets everything read
- * so far; return true from it to stop early (a confident match was found).
+ * so far and how many passes came before it; return true from it to stop
+ * early (a confident match was found).
  * Resolves with all the text read.
  */
 export async function readCard(card: HTMLCanvasElement, onText: (text: string, pass: number) => boolean): Promise<string> {
   const worker = await getWorker();
   let text = '';
-  for (let i = 0; i < PASSES.length; i++) {
-    const pass = PASSES[i];
+  const passes = passOrder();
+  for (let i = 0; i < passes.length; i++) {
+    const pass = passes[i];
     await worker.setParameters({ tessedit_pageseg_mode: pass.mode as never });
     const result = await worker.recognize(pass.prepare(card));
     text += result.data.text + '\n';
-    if (onText(text, i)) break;
+    if (onText(text, i)) {
+      winners = [pass.name, ...winners.filter((name) => name !== pass.name)].slice(0, 3);
+      break;
+    }
   }
   return text;
 }

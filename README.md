@@ -17,7 +17,8 @@ Sets are downloaded when first added and kept on the device, so only the sets a 
 ## What it does
 
 - **Add a set** from the list, or scan a card and let the app find which set it is from.
-- **Scan a card** with the phone camera. The app finds the card's edges, straightens it, reads the text on it in the browser and offers the closest matches to confirm. A photo upload and typed search do the same job without a camera.
+- **Scan a card** with the phone camera. The app finds the card's edges, straightens it, reads the text on it in the browser and offers the closest matches to confirm. A photo upload and typed search do the same job without a camera. Typed search takes a name, a card number ("MVP-6", "MVP 6" and "MVP6" all work) or a subset ("stickers").
+- **Which card of that player**: the reader finds the name but cannot tell a base card from a sticker or an insert, so the confirm step lists the player's other cards in the set to switch to in one tap. Matches from sets in your binders come first; matches from other sets are greyed out below.
 - **Several cards in one shot**: lay cards out 2×2, 3×3 or 4×4, take one picture, and confirm the matches in a list. Each card gets fewer pixels the more you fit in, so the app reports how many it had and warns when that is too few.
 - **Select**: the third tab on the scan screen, beside Camera and Type. Pick a set and every card number is a button: tap to add, tap again to take it back. The fast way to record a set you already own.
 - **Card photos**: the straightened scan is saved (compressed) with the copy and shown in the binder and on the card.
@@ -40,7 +41,9 @@ The collection is stored in the browser (`localStorage` for the card list, Index
 
 Phone cameras cannot focus very close. If the card is blurry, hold the phone further back and use the 2× or 3× zoom on the scan screen, or pick a different lens from the camera list. Tapping the picture asks the camera to refocus.
 
-Card fronts often use display lettering that is hard to read by machine. The app reads each card several ways and matches loosely against the names in your sets, but when a front will not read, the back of the card usually does.
+Take cards out of sleeves and top-loaders where you can: the app finds a bare card's edges and crops the photo much more cleanly, and there is no glare over the name.
+
+Card fronts often use display lettering that is hard to read by machine. The app reads each card several ways (including turned on its side, for names printed up the edge) and matches loosely against the names in your sets. It tries first whatever worked on the last few cards, so a pile from one set gets quicker after the first card. When a front will not read, the back of the card usually does.
 
 ## Run it
 

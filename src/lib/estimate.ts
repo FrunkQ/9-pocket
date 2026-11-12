@@ -126,7 +126,9 @@ export function estimate(product: Product, section: Section, card: Card, version
   } else {
     value = setBase * (card.sn ? serialMultiplier(card.sn) : oddsMultiplier(section.odds));
     if (card.au) value = Math.max(value * 4, 12);
-    if (card.mem) value = Math.max(value * 2, 8);
+    // Upper Deck's "Mem/Tech" column also marks stickers and lenticulars,
+    // which are ordinary inserts, not pieces of jersey.
+    if (card.mem && !/sticker|lenticular/i.test(section.name)) value = Math.max(value * 2, 8);
     if (card.rc) value *= 1.5;
   }
   value *= playerMultiplier(card.p);

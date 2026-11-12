@@ -1382,3 +1382,13 @@ input[type='text'] {
   border-color: #b01f15;
   color: #b01f15;
 }
+
+.row-tag {
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-dim {
+  opacity: 0.5;
+}

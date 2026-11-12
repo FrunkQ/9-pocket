@@ -5,12 +5,12 @@ import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, isO
 import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
 import { priceText } from '../lib/estimate';
 import { findSets, type SetHit } from '../lib/identify';
-import { isConfident, matchText, searchCards, type Candidate } from '../lib/match';
+import { isConfident, matchText, sameName, searchCards, type Candidate } from '../lib/match';
 import { PASS_COUNT, readCard, toCanvas, warmUp } from '../lib/ocr';
 import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { straighten } from '../lib/straighten';
-import { addBinder, addCopy, copiesByCard, namedVersions, updateSettings, useCollection } from '../lib/store';
+import { addBinder, addCopy, binderIds, copiesByCard, namedVersions, updateSettings, useCollection } from '../lib/store';
 import { CATEGORIES, type Category } from '../types';
 import { ScanSelect } from './ScanSelect';
 
@@ -35,15 +35,16 @@ const MARGIN = 0.08;
 
 const where = (c: Candidate) => [c.card.t, [c.product.name, c.product.season].filter(Boolean).join(' '), c.section.id === 'base' ? '' : c.section.name].filter(Boolean).join(' · ');
 
-function CandidateRow({ c, owned, onPick }: { c: Candidate; owned: boolean; onPick: () => void }) {
+function CandidateRow({ c, owned, dim, onPick }: { c: Candidate; owned: boolean; dim?: boolean; onPick: () => void }) {
   return (
-    <li className="row">
+    <li className={dim ? 'row row-dim' : 'row'}>
       <button type="button" className="row-main row-button" onClick={onPick}>
         <Tick on={owned} />
         <span className="row-no">{c.card.n}</span>
         <span className="row-name">
-          {c.card.p || 'Card'} <small>{where(c)}</small>
+          {c.card.p || 'Card'} <small>{[c.card.t, [c.product.name, c.product.season].filter(Boolean).join(' ')].filter(Boolean).join(' · ')}</small>
         </span>
+        {c.section.id === 'base' ? null : <span className="tag row-tag">{c.section.name}</span>}
       </button>
     </li>
   );
@@ -94,7 +95,12 @@ export function Scan({ route }: { route: Route }) {
   const byCard = copiesByCard(state);
   const isOwned = (c: Candidate) => byCard.has(cardKey(c.product.id, c.section.id, c.card.n));
   // Recomputed when a set finishes downloading, so its cards show up at once.
-  const typed = useMemo(() => searchCards(query, { preferProduct: prefer }), [query, prefer, catalogVersion]);
+  // A scanned card is far more likely to be from a set already in the binders,
+  // and most likely from the set the last card went into.
+  const have = useMemo(() => new Set(binderIds(state)), [state]);
+  const recent = useMemo(() => state.copies.reduce<{ product: string; added: string } | undefined>((a, c) => (!a || c.added > a.added ? c : a), undefined)?.product, [state]);
+  const likely = { preferProduct: prefer, have, recent };
+  const typed = useMemo(() => searchCards(query, { preferProduct: prefer, have }), [query, prefer, have, catalogVersion]);
 
   useEffect(() => {
     if (typeMode) return;
@@ -164,7 +170,7 @@ export function Scan({ route }: { route: Route }) {
       let best: Candidate[] = [];
       // Read the card several ways, stopping as soon as one reading is convincing.
       textRef.current = await readCard(flat.canvas, (text, n) => {
-        best = matchText(text, { preferProduct: prefer });
+        best = matchText(text, likely);
         setPass(n + 1);
         return isConfident(best);
       });
@@ -212,7 +218,7 @@ export function Scan({ route }: { route: Route }) {
           const flat = straighten(piece, 800, SPARE / (1 + SPARE * 2));
           let best: Candidate[] = [];
           await readCard(flat.canvas, (text) => {
-            best = matchText(text, { preferProduct: prefer });
+            best = matchText(text, likely);
             return isConfident(best);
           });
           const small = document.createElement('canvas');
@@ -347,10 +353,16 @@ export function Scan({ route }: { route: Route }) {
 
   const closeTo = preferProduct ? href(['set', preferProduct.id]) : href([]);
   const results = query.trim() ? typed : found;
+  // Matches from sets the user has come first; the rest are shown greyed.
+  const mine = (results ?? []).filter((c) => have.size === 0 || have.has(c.product.id));
+  const elsewhere = (results ?? []).filter((c) => have.size > 0 && !have.has(c.product.id));
   const versions = picked ? versionsFor(picked.product, picked.section, picked.card) : [];
   // Names the user has already given to unlisted versions in this set.
   const named = picked ? namedVersions(state, picked.product.id) : [];
   const naming = isOther(version) && !named.includes(otherLabel(version).trim());
+  // The same player's other cards in this set: the reader finds the name, but
+  // cannot tell a base card from a sticker or an insert.
+  const siblings = picked ? sameName(picked.product, picked.card).slice(0, 12) : [];
   const canLook = !picked && !busy && (query.trim().length >= 3 || (found !== null && textRef.current.trim().length > 0));
 
   return (
@@ -441,6 +453,21 @@ export function Scan({ route }: { route: Route }) {
                 <div className="price-m">{priceText(picked.product, picked.section, picked.card, version)}</div>
               </div>
             </div>
+            {siblings.length > 1 ? (
+              <div className="field">
+                <div className="field-label">Which {picked.card.p} card?</div>
+                <div className="chips chips-scroll" role="group" aria-label="Which card">
+                  {siblings.map((s) => {
+                    const on = s.section.id === picked.section.id && s.card.n === picked.card.n;
+                    return (
+                      <button key={s.section.id + s.card.n} type="button" className={on ? 'chip is-on' : 'chip'} aria-pressed={on} onClick={() => pick(s)}>
+                        {s.section.id === 'base' ? 'Base' : s.section.name} · {s.card.n}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {picked ? (
               <div className="field">
                 <div className="field-label">Which version is it?</div>
@@ -527,6 +554,7 @@ export function Scan({ route }: { route: Route }) {
                     Lay {grid * grid} cards edge to edge in a {grid}×{grid} block and fill the frame with them. The more cards per shot, the fewer pixels each one gets: if names stop reading, use fewer cards, or "Use a photo", which captures far more detail than live video.
                   </p>
                 ) : null}
+                {!shot ? <p className="mono-note">Take cards out of sleeves and top-loaders if you can. The app finds a bare card's edges and crops the photo much more cleanly, and there is no glare over the name.</p> : null}
                 {camera === 'live' && !shot && grid === 1 ? <p className="mono-note">Blurry? Hold the phone further back and zoom in. Tap the picture to refocus. Fancy lettering on the front? The back usually reads better.</p> : null}
               </>
             )}
@@ -576,11 +604,23 @@ export function Scan({ route }: { route: Route }) {
             {results && results.length > 0 ? (
               <>
                 <div className="eyebrow">{query.trim() ? `${results.length} MATCHES IN YOUR SETS` : 'WHICH CARD IS IT?'}</div>
-                <ul className="rows">
-                  {results.map((c) => (
-                    <CandidateRow key={cardKey(c.product.id, c.section.id, c.card.n)} c={c} owned={isOwned(c)} onPick={() => pick(c)} />
-                  ))}
-                </ul>
+                {mine.length > 0 ? (
+                  <ul className="rows">
+                    {mine.map((c) => (
+                      <CandidateRow key={cardKey(c.product.id, c.section.id, c.card.n)} c={c} owned={isOwned(c)} onPick={() => pick(c)} />
+                    ))}
+                  </ul>
+                ) : null}
+                {elsewhere.length > 0 ? (
+                  <>
+                    <div className="eyebrow">LESS LIKELY: SETS NOT IN YOUR BINDERS</div>
+                    <ul className="rows">
+                      {elsewhere.map((c) => (
+                        <CandidateRow key={cardKey(c.product.id, c.section.id, c.card.n)} c={c} owned={isOwned(c)} dim onPick={() => pick(c)} />
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </>
             ) : null}
             {query.trim() && typed.length === 0 ? <p className="panel-note">Nothing matches in the sets on this device.</p> : null}
