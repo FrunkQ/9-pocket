@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardFace } from '../components/CardFace';
-import { Tick } from '../components/Chrome';
+import { Segmented, Tick } from '../components/Chrome';
 import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, isOther, OTHER, otherLabel, otherVersion, useCatalogVersion, versionsFor } from '../data/catalog';
 import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
 import { priceText } from '../lib/estimate';
@@ -10,8 +10,8 @@ import { PASS_COUNT, readCard, toCanvas, warmUp } from '../lib/ocr';
 import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
 import { straighten } from '../lib/straighten';
-import { addBinder, addCopy, binderIds, copiesByCard, namedVersions, updateSettings, useCollection } from '../lib/store';
-import { CATEGORIES, type Category } from '../types';
+import { addBinder, addCopy, binderIds, copiesByCard, defaultCondition, defaultProtection, namedVersions, updateSettings, useCollection } from '../lib/store';
+import { CATEGORIES, CONDITIONS, PROTECTIONS, type Category, type Condition, type Protection } from '../types';
 import { ScanSelect } from './ScanSelect';
 
 type Camera = 'starting' | 'live' | 'blocked' | 'off';
@@ -103,6 +103,10 @@ export function Scan({ route }: { route: Route }) {
   const [problem, setProblem] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [version, setVersion] = useState('base');
+  // Asked for as the card is added, so there is no trip to the card's own page.
+  // They start as the last card was left and carry over from card to card.
+  const [condition, setCondition] = useState<Condition>(defaultCondition(state.settings));
+  const [protection, setProtection] = useState<Protection>(defaultProtection(state.settings));
   const [query, setQuery] = useState('');
   const [added, setAdded] = useState('');
   const [session, setSession] = useState(0);
@@ -360,7 +364,7 @@ export function Scan({ route }: { route: Route }) {
       const c = item.candidates[item.choice];
       if (!c) continue;
       const version = c.card.po ? versionsFor(c.product, c.section, c.card)[0]?.id ?? 'base' : 'base';
-      const copy = addCopy({ product: c.product.id, section: c.section.id, n: c.card.n, version });
+      const copy = addCopy({ product: c.product.id, section: c.section.id, n: c.card.n, version, condition, protection });
       addBinder(c.product.id);
       void savePhoto(copy.id, cardKey(c.product.id, c.section.id, c.card.n), item.canvas);
       count++;
@@ -452,7 +456,7 @@ export function Scan({ route }: { route: Route }) {
 
   const confirm = () => {
     if (!picked) return;
-    const copy = addCopy({ product: picked.product.id, section: picked.section.id, n: picked.card.n, version });
+    const copy = addCopy({ product: picked.product.id, section: picked.section.id, n: picked.card.n, version, condition, protection });
     addBinder(picked.product.id);
     const key = cardKey(picked.product.id, picked.section.id, picked.card.n);
     if (cardRef.current) void savePhoto(copy.id, key, cardRef.current);
@@ -596,7 +600,7 @@ export function Scan({ route }: { route: Route }) {
                   {[picked.product.season, picked.product.brand, picked.product.name].filter(Boolean).join(' ')}
                   {picked.section.id === 'base' ? '' : ` · ${picked.section.name}`}
                 </div>
-                <div className="price-m">{priceText(picked.product, picked.section, picked.card, version)}</div>
+                <div className="price-m">{priceText(picked.product, picked.section, picked.card, version, condition)}</div>
               </div>
             </div>
             {siblings.length > 1 ? (
@@ -641,6 +645,8 @@ export function Scan({ route }: { route: Route }) {
                 {naming ? <input type="text" aria-label="What is this version called?" value={otherLabel(version)} onChange={(e) => setVersion(otherVersion(e.target.value))} placeholder="What is it called? e.g. Blue" maxLength={40} autoComplete="off" /> : null}
               </div>
             ) : null}
+            <Segmented label="Condition" value={condition} options={CONDITIONS} onChange={setCondition} />
+            <Segmented label="Protection" value={protection} options={PROTECTIONS} onChange={setProtection} />
             {side === 'front' ? (
               <>
                 <p className="panel-note">Show the front of this card. Only the picture is taken; the match stays as it is.</p>
@@ -765,6 +771,8 @@ export function Scan({ route }: { route: Route }) {
                     </li>
                   ))}
                 </ul>
+                <Segmented label="Condition of these cards" value={condition} options={CONDITIONS} onChange={setCondition} />
+                <Segmented label="Protection" value={protection} options={PROTECTIONS} onChange={setProtection} />
                 <div className="row-buttons">
                   <button type="button" className="btn btn-red btn-big" onClick={confirmBatch} disabled={!batch.some((b) => b.choice >= 0)}>
                     ADD {batch.filter((b) => b.choice >= 0).length} CARDS

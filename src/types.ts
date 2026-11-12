@@ -123,6 +123,9 @@ export interface Settings {
   category: Category;
   /** Currency values are shown in, e.g. "GBP". Everything is stored in US dollars. */
   currency: string;
+  /** The condition and protection last chosen for a card, used for the next one added. */
+  condition?: Condition;
+  protection?: Protection;
   /** Tabs the user has switched on or off. A kind not listed follows its default. */
   kinds?: Partial<Record<Category, boolean>>;
   /** How often each kind has been used, to open the app on the favourite. */

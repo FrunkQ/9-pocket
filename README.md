@@ -38,7 +38,7 @@ Each of these kinds of card is a tab that stays hidden until a set of that kind 
 - **Several cards in one shot**: lay cards out 2×2, 3×3 or 4×4, take one picture, and confirm the matches in a list. Each card gets fewer pixels the more you fit in, so the app reports how many it had and warns when that is too few.
 - **Select**: the third tab on the scan screen, beside Camera and Type. Pick a set and every card number is a button: tap to add, tap again to take it back. The fast way to record a set you already own.
 - **Card photos**: the straightened scan is saved (compressed) with the copy and shown in the binder and on the card.
-- **Versions**: each copy records which parallel or finish it is, its condition and how it is protected. A version the checklist does not list can be given a name of your own ("Blue"), which is then offered for the set's other cards.
+- **Versions**: each copy records which parallel or finish it is, its condition and how it is protected. Condition and protection are asked as the card is added, starting at near mint and sleeved and then at whatever was chosen last, so a run of cards kept the same way needs no extra taps. A version the checklist does not list can be given a name of your own ("Blue"), which is then offered for the set's other cards.
 - **Values**: market prices where the source has them, otherwise an estimate marked with `~` (see `src/lib/estimate.ts`).
 - **Display currency**: values are worked out in US dollars and can be shown in Canadian dollars, pounds, euros or Australian dollars, using the European Central Bank's daily rates (via the Frankfurter API).
 - **eBay links** on every card: items for sale now, and recent sold prices.

@@ -92,19 +92,26 @@ export function addCopy(input: { product: string; section: string; n: string; ve
     section: input.section,
     n: input.n,
     version: input.version ?? 'base',
-    condition: input.condition ?? 'NM',
-    protection: input.protection ?? 'none',
+    // Most people keep a whole collection the same way, so a new card starts
+    // as the last one was left: near mint and sleeved until told otherwise.
+    condition: input.condition ?? defaultCondition(state.settings),
+    protection: input.protection ?? defaultProtection(state.settings),
     added: new Date().toISOString(),
   };
   const kind = categoryOf(copy.product);
   const uses = { ...state.settings.uses, [kind]: (state.settings.uses?.[kind] ?? 0) + 1 };
-  commit({ ...state, copies: [...state.copies, copy], settings: { ...state.settings, uses } });
+  commit({ ...state, copies: [...state.copies, copy], settings: { ...state.settings, uses, condition: copy.condition, protection: copy.protection } });
   return copy;
 }
 
 export function updateCopy(id: string, patch: Partial<Pick<Copy, 'version' | 'condition' | 'protection'>>) {
-  commit({ ...state, copies: state.copies.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  // A condition or protection chosen here becomes the starting point for the next card added.
+  const settings = { ...state.settings, ...(patch.condition ? { condition: patch.condition } : {}), ...(patch.protection ? { protection: patch.protection } : {}) };
+  commit({ ...state, settings, copies: state.copies.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 }
+
+export const defaultCondition = (settings: Settings): Condition => settings.condition ?? 'NM';
+export const defaultProtection = (settings: Settings): Protection => settings.protection ?? 'sleeve';
 
 export function removeCopy(id: string) {
   commit({ ...state, copies: state.copies.filter((c) => c.id !== id) });
