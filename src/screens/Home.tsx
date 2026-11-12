@@ -291,9 +291,11 @@ export function Home() {
         </div>
       </section>
 
-      <details className="advanced">
-        <summary>Card types: choose which tabs show</summary>
-        <p className="panel-text">Switch off the kinds of card you do not collect. A tab that is off is only hidden: its sets and cards are kept. The app opens on the tab you use most.</p>
+      <section className="panel" aria-labelledby="kinds-title">
+        <h2 id="kinds-title" className="eyebrow">
+          ADD AND HIDE CARD TYPES (E.G. BASEBALL, FOOTBALL)
+        </h2>
+        <p className="panel-text">Switch on the kinds of card you collect and switch off the ones you do not. A type that is off is only hidden: its sets and cards are kept. The app opens on the type you use most.</p>
         <div className="chips" role="group" aria-label="Card types shown">
           {CATEGORIES.map((c) => {
             const on = isKindShown(state.settings, c.id);
@@ -305,7 +307,7 @@ export function Home() {
           })}
         </div>
         <p className="mono-note">Baseball, Basketball, Football, Soccer and Other have no list the app is allowed to collect. Their sets come from checklist files you download and load under "Add a set".</p>
-      </details>
+      </section>
 
       <Backup />
 
