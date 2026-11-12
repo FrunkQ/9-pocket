@@ -178,17 +178,27 @@ export function Scan({ route }: { route: Route }) {
         return isConfident(best);
       });
       setFound(best);
-      if (best.length === 0) setProblem('That card is not in the sets on this device. Look for its set below, try the back of the card (plainer lettering), or type the name.');
-      // A card that names its own set or subset ("2025-26 SP HOCKEY", "ROOKIE
-      // AUTHENTICS") may belong to a set that is not in the binders, even when
-      // the player was found in one that is. Offer that set without being asked.
-      if (category === 'hockey' && textRef.current.trim()) {
-        const named = (await findSets(textRef.current, 'hockey')).filter((hit) => hit.sure);
-        const top = named[0];
-        if (top && !have.has(top.set.id)) {
-          setSaid(true);
-          setOthers(named.filter((hit) => !have.has(hit.set.id) && hit.score >= top.score - 0.3).slice(0, 3));
-        }
+      // Matching only looks in sets already on this device. So also ask which
+      // sets the card could be from: always when nothing matched, and for hockey
+      // every time, because a card that names its own set or subset ("2025-26 SP
+      // HOCKEY", "ROOKIE AUTHENTICS") may belong to a set that is not in the
+      // binders even when the player was found in one that is.
+      const lookUp = textRef.current.trim() !== '' && (best.length === 0 || category === 'hockey');
+      const hits = lookUp ? (await findSets(textRef.current, category)).filter((hit) => !have.has(hit.set.id)) : [];
+      const top = hits.find((hit) => hit.sure);
+      if (top) {
+        setSaid(true);
+        setOthers(hits.filter((hit) => hit.sure && hit.score >= top.score - 0.3).slice(0, 3));
+        // The small print on a card's back throws up chance matches with other
+        // players. The card has said who it is, so keep only that player.
+        best = best.filter((c) => fold(c.card.p) === fold(top.cardName));
+        setFound(best);
+        if (best.length === 0) setProblem('That card is not in your sets yet. Tap its set below to add it.');
+      } else if (best.length === 0 && hits.length > 0) {
+        setOthers(hits);
+        setProblem('That card is not in your sets yet. It is in the sets below: tap the right one to add it. The back of the card usually says which.');
+      } else if (best.length === 0) {
+        setProblem('That card is not in the sets on this device. Look for its set below, try the back of the card (plainer lettering), or type the name.');
       }
     } catch {
       setProblem('The text reader could not load. Check your connection, or type the name below.');

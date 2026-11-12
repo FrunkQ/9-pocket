@@ -94,7 +94,8 @@ async function hockey(text: string): Promise<SetHit[]> {
   const padded = ` ${reading.folded} `;
   const sectionTitle = (part: string) => part.replace(/\b[a-z]/g, (c) => c.toUpperCase());
   const hits = new Map<string, SetHit>();
-  for (const player of found.slice(0, 3)) {
+  // Other players only when their names read about as well as the best one.
+  for (const player of found.filter((p) => p.score >= found[0].score - 0.1).slice(0, 3)) {
     for (const position of player.sets) {
       const set = sets[position];
       if (!set) continue;
