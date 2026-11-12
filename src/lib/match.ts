@@ -227,9 +227,12 @@ export function matchText(text: string, options: MatchOptions = {}): Candidate[]
     }
     if (e.sectionWords.length) {
       // Subset names are often in script lettering, so a near miss counts.
-      if (e.sectionWords.every((w) => reading.similarity(w) >= 0.75)) {
+      const read = e.sectionWords.filter((w) => reading.similarity(w) >= 0.75).length;
+      if (read === e.sectionWords.length) {
         score += 0.45;
         evidence.push('subset');
+      } else if (read > 0) {
+        score += 0.2; // Half a name ("ROOKIE" of "Rookie Authentics") still leans this way.
       } else if (e.section.kind === 'insert') {
         score -= 0.3; // Without other evidence, assume the common base card.
       }

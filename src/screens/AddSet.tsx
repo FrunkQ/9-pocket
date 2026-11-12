@@ -41,10 +41,14 @@ export function AddSet({ route }: { route: Route }) {
     const terms = fold(query).split(' ').filter(Boolean);
     if (!sets) return [];
     if (terms.length === 0) return sets;
-    return sets.filter((s) => {
+    const found = sets.filter((s) => {
       const text = fold(`${s.season} ${s.brand} ${s.name} ${s.id}`);
       return terms.every((t) => text.includes(t));
     });
+    // A set whose whole name was typed ("SP") goes above those that only contain it ("SP Authentic", "SPx").
+    const typed = terms.filter((t) => !/^\d+$/.test(t)).join(' ');
+    const exact = (s: SetInfo) => (fold(s.name) === typed ? 0 : 1);
+    return [...found].sort((a, b) => exact(a) - exact(b));
   }, [sets, query]);
 
   const add = async (set: SetInfo) => {

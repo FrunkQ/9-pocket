@@ -16,7 +16,7 @@ Sets are downloaded when first added and kept on the device, so only the sets a 
 
 ## What it does
 
-- **Add a set** from the list, or scan a card and let the app find which set it is from.
+- **Add a set** from the list, or scan a card and let the app find which set it is from. When a card prints its own set or subset (hockey backs say "2025-26 SP HOCKEY"; fronts often name the subset, "Rookie Authentics") and that set is not in your binders, the app offers it above the other matches, even if the player was found in a set you do have. The version printed on the back ("BLUE") is selected for you.
 - **Scan a card** with the phone camera. The app finds the card's edges, straightens it, reads the text on it in the browser and offers the closest matches to confirm. A photo upload and typed search do the same job without a camera. Typed search takes a name, a card number ("MVP-6", "MVP 6" and "MVP6" all work) or a subset ("stickers").
 - **Which card of that player**: the reader finds the name but cannot tell a base card from a sticker or an insert, so the confirm step lists the player's other cards in the set to switch to in one tap. Matches from sets in your binders come first; matches from other sets are greyed out below.
 - **Several cards in one shot**: lay cards out 2×2, 3×3 or 4×4, take one picture, and confirm the matches in a list. Each card gets fewer pixels the more you fit in, so the app reports how many it had and warns when that is too few.
@@ -77,7 +77,7 @@ The build also writes `sw.js` (from `sw/sw.js`, with the list of built files fil
 
 ## The hockey catalogue
 
-`public/catalog/hockey/` is generated: one file per set, `index.json` listing them, and `players.json` saying which sets each player appears in (used to find a scanned card's set).
+`public/catalog/hockey/` is generated: one file per set, `index.json` listing them, `players.json` saying which sets each player appears in, and `subsets.json` saying which sets have a named part such as "Rookie Authentics" or "Young Guns" (both used to find a scanned card's set).
 
 ```bash
 npm run data:fetch

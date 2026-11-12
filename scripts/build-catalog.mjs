@@ -357,10 +357,19 @@ for (const file of readdirSync(RAW).filter((f) => f.endsWith('.html')).sort()) {
 
 // Newest season first, then by name.
 index.sort((a, b) => b.season.localeCompare(a.season) || a.name.localeCompare(b.name));
+// Named parts of a base set ("Rookie Authentics", "Young Guns") -> the sets
+// that have one. A card usually prints this name, which tells sets apart
+// when a player is in twenty of them.
+const subsets = new Map();
 index.forEach((entry, position) => {
   const product = JSON.parse(readFileSync(`${OUT}/${entry.id}.json`, 'utf8'));
   for (const section of product.sections) {
     if (section.kind !== 'base') continue;
+    if (section.id !== 'base') {
+      const part = fold(section.name);
+      if (!subsets.has(part)) subsets.set(part, []);
+      subsets.get(part).push(position);
+    }
     for (const card of section.cards) {
       const name = fold(card.p);
       if (!name.includes(' ') || card.p.includes('/')) continue; // Single words and multi-player cards are not useful for lookup.
@@ -375,5 +384,6 @@ const playerIndex = {};
 for (const [name, set] of [...players].sort((a, b) => a[0].localeCompare(b[0]))) playerIndex[name] = [...set];
 const playersJson = JSON.stringify(playerIndex);
 writeFileSync(`${OUT}/players.json`, playersJson);
+writeFileSync(`${OUT}/subsets.json`, JSON.stringify(Object.fromEntries([...subsets].sort((a, b) => a[0].localeCompare(b[0])))));
 
 console.log(`\n${index.length} sets (${skipped} skipped), ${(bytes / 1024 / 1024).toFixed(1)} MB of set files, ${players.size} players (${(playersJson.length / 1024).toFixed(0)} KB index)`);

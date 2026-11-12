@@ -17,6 +17,10 @@ export interface SetHit {
   n?: string;
   img?: string;
   score: number;
+  /** The card itself names this set or one of its subsets, rather than only the player being in it. */
+  sure?: boolean;
+  /** The subset name read off the card, e.g. "Rookie Authentics". */
+  part?: string;
 }
 
 /** Lines of the reading that could be a card's name, longest-looking first in reading order. */
@@ -50,9 +54,36 @@ function players(): Promise<Record<string, number[]>> {
   return playersJob;
 }
 
+let subsetsJob: Promise<Record<string, number[]>> | null = null;
+
+/** Named parts of base sets ("rookie authentics") and the sets that have one. Optional: empty if it will not load. */
+function subsets(): Promise<Record<string, number[]>> {
+  if (!subsetsJob) {
+    subsetsJob = fetch('catalog/hockey/subsets.json')
+      .then((r) => (r.ok ? (r.json() as Promise<Record<string, number[]>>) : {}))
+      .catch(() => ({}));
+  }
+  return subsetsJob;
+}
+
 async function hockey(text: string): Promise<SetHit[]> {
-  const [index, sets] = await Promise.all([players(), listSets('hockey')]);
+  const [index, sets, parts] = await Promise.all([players(), listSets('hockey'), subsets()]);
   const reading = new Reading(text);
+
+  // Subset names printed on the card, e.g. "ROOKIE AUTHENTICS". The lettering
+  // is often run together or a letter out, so near misses count.
+  const printed = new Map<number, string>();
+  for (const part of Object.keys(parts)) {
+    const words = part.split(' ').filter((w) => w.length >= 4);
+    if (words.length === 0 || part.split(' ').length > words.length + 1) continue;
+    // One common word ("rookies") is not enough to tell sets apart.
+    if (words.length < 2 && words[0].length < 9) continue;
+    if (!words.every((w) => reading.similarity(w) >= 0.8)) continue;
+    for (const position of parts[part]) {
+      if ((printed.get(position)?.length ?? 0) < part.length) printed.set(position, part);
+    }
+  }
+
   const found: { name: string; score: number; sets: number[] }[] = [];
   for (const name of Object.keys(index)) {
     const score = nameAgreement(name.split(' '), true, reading);
@@ -60,25 +91,42 @@ async function hockey(text: string): Promise<SetHit[]> {
   }
   found.sort((a, b) => b.score - a.score);
 
+  const padded = ` ${reading.folded} `;
+  const sectionTitle = (part: string) => part.replace(/\b[a-z]/g, (c) => c.toUpperCase());
   const hits = new Map<string, SetHit>();
   for (const player of found.slice(0, 3)) {
     for (const position of player.sets) {
       const set = sets[position];
       if (!set) continue;
       let score = player.score;
+      let sure = false;
       // The set's own name, or its season, printed on the card settles it.
-      const words = fold(set.name).split(' ').filter((w) => w.length >= 3);
-      if (words.length && words.every((w) => reading.words.has(w))) score += 0.5;
+      // Card backs print the product line: "2025-26 SP HOCKEY".
+      const name = fold(set.name);
+      const words = name.split(' ').filter((w) => w.length >= 2);
+      if (padded.includes(` ${name} hockey `)) {
+        score += 0.9;
+        sure = true;
+      } else if (words.length && words.every((w) => reading.words.has(w))) {
+        score += 0.5;
+        sure = name.length >= 5;
+      }
+      const part = printed.get(position);
+      if (part) {
+        score += 0.6;
+        sure = true;
+      }
       const [from, to] = set.season.split('-');
       if (from && reading.words.has(from)) score += 0.3;
       if (to && (reading.folded.includes(`${from.slice(2)} ${to}`) || reading.folded.includes(`${from} ${to}`))) score += 0.3;
       const cardName = player.name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
       const existing = hits.get(set.id);
-      if (!existing || existing.score < score) hits.set(set.id, { set, cardName, score });
+      if (!existing || existing.score < score) hits.set(set.id, { set, cardName, score, sure, part: part ? sectionTitle(part) : undefined });
     }
   }
-  // Ties fall back to catalogue order, which is newest first.
-  return [...hits.values()].sort((a, b) => b.score - a.score || sets.indexOf(a.set) - sets.indexOf(b.set)).slice(0, 12);
+  // Ties fall back to catalogue order, which is newest first. A player can be
+  // in twenty sets in a season; when the card does not say which, show them all.
+  return [...hits.values()].sort((a, b) => b.score - a.score || sets.indexOf(a.set) - sets.indexOf(b.set)).slice(0, 24);
 }
 
 // ---- Magic ----------------------------------------------------------------

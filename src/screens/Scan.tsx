@@ -5,7 +5,7 @@ import { baseCount, cardKey, categoryOf, ensureProduct, getCard, getProduct, isO
 import { cropFrame, guideCrop, keepFocusing, openCamera, preferredCamera, rearCameras, refocus } from '../lib/capture';
 import { priceText } from '../lib/estimate';
 import { findSets, type SetHit } from '../lib/identify';
-import { isConfident, matchText, sameName, searchCards, type Candidate } from '../lib/match';
+import { fold, isConfident, matchText, sameName, searchCards, type Candidate } from '../lib/match';
 import { PASS_COUNT, readCard, toCanvas, warmUp } from '../lib/ocr';
 import { savePhoto } from '../lib/photos';
 import { href, type Route } from '../lib/router';
@@ -83,6 +83,8 @@ export function Scan({ route }: { route: Route }) {
   const [flattened, setFlattened] = useState(false);
   const [found, setFound] = useState<Candidate[] | null>(null);
   const [others, setOthers] = useState<SetHit[] | null>(null);
+  // True when the list of other sets came from what the card itself prints, unasked.
+  const [said, setSaid] = useState(false);
   const [looking, setLooking] = useState(false);
   const [fetching, setFetching] = useState('');
   const [problem, setProblem] = useState('');
@@ -161,6 +163,7 @@ export function Scan({ route }: { route: Route }) {
     setProblem('');
     setFound(null);
     setOthers(null);
+    setSaid(false);
     setAdded('');
     try {
       const flat = straighten(source, 1000, margin);
@@ -176,6 +179,17 @@ export function Scan({ route }: { route: Route }) {
       });
       setFound(best);
       if (best.length === 0) setProblem('That card is not in the sets on this device. Look for its set below, try the back of the card (plainer lettering), or type the name.');
+      // A card that names its own set or subset ("2025-26 SP HOCKEY", "ROOKIE
+      // AUTHENTICS") may belong to a set that is not in the binders, even when
+      // the player was found in one that is. Offer that set without being asked.
+      if (category === 'hockey' && textRef.current.trim()) {
+        const named = (await findSets(textRef.current, 'hockey')).filter((hit) => hit.sure);
+        const top = named[0];
+        if (top && !have.has(top.set.id)) {
+          setSaid(true);
+          setOthers(named.filter((hit) => !have.has(hit.set.id) && hit.score >= top.score - 0.3).slice(0, 3));
+        }
+      }
     } catch {
       setProblem('The text reader could not load. Check your connection, or type the name below.');
     } finally {
@@ -293,6 +307,7 @@ export function Scan({ route }: { route: Route }) {
     setProblem('');
     const hits = await findSets(text, kind);
     setLooking(false);
+    setSaid(false);
     setOthers(hits);
     if (hits.length === 0) setProblem(`No ${CATEGORIES.find((c) => c.id === kind)?.label ?? ''} set was found for that. Try the back of the card, or add the set from the list.`);
   };
@@ -323,7 +338,11 @@ export function Scan({ route }: { route: Route }) {
 
   const pick = (c: Candidate) => {
     setPicked(c);
-    setVersion(c.card.po ? versionsFor(c.product, c.section, c.card)[0]?.id ?? 'base' : 'base');
+    const versions = versionsFor(c.product, c.section, c.card);
+    // Recent card backs print the version on a line of its own ("BLUE").
+    const lines = query.trim() ? new Set<string>() : new Set(textRef.current.split('\n').map(fold));
+    const printed = versions.find((v) => lines.has(fold(v.name)));
+    setVersion(printed?.id ?? (c.card.po ? versions[0]?.id ?? 'base' : 'base'));
   };
 
   const reset = () => {
@@ -350,6 +369,35 @@ export function Scan({ route }: { route: Route }) {
     setSession((n) => n + 1);
     reset();
   };
+
+  const otherSets =
+    others && others.length > 0 ? (
+              <>
+                <div className="eyebrow">{said ? 'THE CARD SAYS IT IS FROM A SET YOU HAVE NOT ADDED' : 'FOUND IN THESE SETS'}</div>
+                <ul className="rows">
+                  {others.map((hit) => (
+                    <li key={hit.set.id + (hit.n ?? '')} className="row">
+                      <button type="button" className="row-main row-button" onClick={() => void useSet(hit)} disabled={fetching !== ''}>
+                        {hit.img ? (
+                          <span className="row-thumb">
+                            <img src={hit.img} alt="" loading="lazy" />
+                          </span>
+                        ) : null}
+                        <span className="row-name">
+                          {hit.cardName}{' '}
+                          <small>
+                            {[hit.set.season, hit.set.name].filter(Boolean).join(' ')}
+                            {hit.part ? ` · ${hit.part}` : ''}
+                            {hit.n ? ` · No. ${hit.n}` : ''}
+                          </small>
+                        </span>
+                        <span className="row-price">{fetching === hit.set.id ? 'Downloading…' : getProduct(hit.set.id) ? 'Use' : 'Add set'}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+    ) : null;
 
   const closeTo = preferProduct ? href(['set', preferProduct.id]) : href([]);
   const results = query.trim() ? typed : found;
@@ -601,6 +649,8 @@ export function Scan({ route }: { route: Route }) {
               </p>
             ) : null}
 
+            {said ? otherSets : null}
+
             {results && results.length > 0 ? (
               <>
                 <div className="eyebrow">{query.trim() ? `${results.length} MATCHES IN YOUR SETS` : 'WHICH CARD IS IT?'}</div>
@@ -638,32 +688,7 @@ export function Scan({ route }: { route: Route }) {
               </div>
             ) : null}
 
-            {others && others.length > 0 ? (
-              <>
-                <div className="eyebrow">FOUND IN THESE SETS</div>
-                <ul className="rows">
-                  {others.map((hit) => (
-                    <li key={hit.set.id + (hit.n ?? '')} className="row">
-                      <button type="button" className="row-main row-button" onClick={() => void useSet(hit)} disabled={fetching !== ''}>
-                        {hit.img ? (
-                          <span className="row-thumb">
-                            <img src={hit.img} alt="" loading="lazy" />
-                          </span>
-                        ) : null}
-                        <span className="row-name">
-                          {hit.cardName}{' '}
-                          <small>
-                            {[hit.set.season, hit.set.name].filter(Boolean).join(' ')}
-                            {hit.n ? ` · No. ${hit.n}` : ''}
-                          </small>
-                        </span>
-                        <span className="row-price">{fetching === hit.set.id ? 'Downloading…' : getProduct(hit.set.id) ? 'Use' : 'Add set'}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
+            {said ? null : otherSets}
           </>
         )}
       </div>
